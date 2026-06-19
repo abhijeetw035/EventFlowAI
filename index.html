@@ -19,7 +19,7 @@
         .btn-divert:hover { background: #0056b3; }
         .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
         
-        /* Time Slider Styles */
+        /* Time & Slider Styles */
         .time-control { margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
         .slider-container { display: flex; align-items: center; gap: 15px; margin-top: 10px; }
         input[type=range] { flex-grow: 1; cursor: pointer; }
@@ -43,6 +43,18 @@
                 <span id="minDateLabel" style="font-size: 12px; color: #888;">Start</span>
                 <input type="range" id="timeSlider" min="0" max="100" value="100" disabled>
                 <span id="maxDateLabel" style="font-size: 12px; color: #888;">End</span>
+            </div>
+        </div>
+
+        <div class="time-control" style="margin-top: 10px; padding-top: 10px;">
+            <div style="display: flex; justify-content: space-between;">
+                <strong>Diversion Search Radius:</strong>
+                <span id="radiusDisplay" class="time-display">1.5 km</span>
+            </div>
+            <div class="slider-container">
+                <span style="font-size: 12px; color: #888;">0.5 km</span>
+                <input type="range" id="radiusSlider" min="0.5" max="5.0" step="0.1" value="1.5">
+                <span style="font-size: 12px; color: #888;">5.0 km</span>
             </div>
         </div>
     </div>
@@ -89,6 +101,11 @@
         } catch (err) {
             document.getElementById('currentTimeDisplay').innerText = "Backend Offline.";
         }
+
+        // Add reactive listener for the radius slider
+        document.getElementById('radiusSlider').addEventListener('input', (e) => {
+            document.getElementById('radiusDisplay').innerText = `${e.target.value} km`;
+        });
     };
 
     function processTemporalData(data) {
@@ -155,7 +172,7 @@
             const popupContent = `
                 <div style="min-width: 200px;">
                     <h4 style="margin:0 0 5px 0;">${incident.id}</h4>
-                    <b>Cause:</b> ${incident.event_cause.replace('_', ' ').toUpperCase()}<br>
+                    <b>Cause:</b> ${incident.event_cause ? incident.event_cause.replace('_', ' ').toUpperCase() : 'UNKNOWN'}<br>
                     <b>Reported:</b> ${new Date(incident.parsedStart).toLocaleString()}<br>
                     <button class="btn-divert" onclick="calculateDiversion(${lat}, ${lon}, '${incident.id}')">
                         Calculate Macro-Flanks
@@ -178,8 +195,10 @@
         const timestamp = parseInt(document.getElementById('timeSlider').value);
         const activeAtTime = allIncidents.filter(inc => timestamp >= inc.parsedStart && timestamp <= inc.parsedEnd);
         
-        // 2. FILTER BY GEOSPATIAL PROXIMITY (1.5 km radius)
-        const CLUSTER_RADIUS_KM = 1.5; 
+        // 2. GET DYNAMIC RADIUS FROM UI
+        const CLUSTER_RADIUS_KM = parseFloat(document.getElementById('radiusSlider').value); 
+
+        // 3. FILTER BY GEOSPATIAL PROXIMITY
         const localCluster = activeAtTime.filter(inc => {
             const incLat = parseFloat(inc.latitude);
             const incLon = parseFloat(inc.longitude);
@@ -195,18 +214,19 @@
         }));
 
         try {
-            // 3. SEND LOCALIZED CLUSTER TO BACKEND
+            // 4. SEND LOCALIZED CLUSTER + DYNAMIC RADIUS TO BACKEND
             const response = await fetch(`http://127.0.0.1:8000/calculate-cluster-diversion`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     target: { lat: lat, lon: lon },
-                    active_cluster: clusterPayload
+                    active_cluster: clusterPayload,
+                    radius_km: CLUSTER_RADIUS_KM // Sending to the new optimized backend
                 })
             });
             const data = await response.json();
 
-            // Draw visual cluster zone
+            // Draw visual cluster zone matching the dynamic radius
             const clusterZone = L.circle([lat, lon], {
                 color: '#dc3545', fillColor: '#dc3545', fillOpacity: 0.1, radius: CLUSTER_RADIUS_KM * 1000, dashArray: '5, 5'
             }).addTo(map);

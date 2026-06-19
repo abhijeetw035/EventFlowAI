@@ -93,7 +93,7 @@ class LocalDiversionEngine:
 if __name__ == "__main__":
     # Center the local graph around the Frazer Town / RT Nagar area from your map
     center_lat, center_lon = 13.0035, 77.5785
-    engine = LocalDiversionEngine(center_lat, center_lon, dist=2000)
+    engine = LocalDiversionEngine(center_lat, center_lon, dist=12000)
     
     # Simulate a sudden roadblock in the middle of an intersection
     incident_lat, incident_lon = 13.0074, 77.6185
