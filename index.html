@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4D Spatiotemporal Diversion Engine</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background: #f4f6f9; }
+        .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        .control-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        #map { height: 600px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); width: 100%; }
+        .results-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .diversion-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px; }
+        .vector-card { padding: 15px; border-radius: 6px; border-left: 5px solid #ccc; background: #f8f9fa; }
+        .status-success { border-left-color: #28a745; background: #f4fff7; }
+        .status-gridlock { border-left-color: #dc3545; background: #fff5f5; }
+        .btn-divert { background: #007bff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-top: 10px; width: 100%; font-weight: bold;}
+        .btn-divert:hover { background: #0056b3; }
+        .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+        
+        /* New Time Slider Styles */
+        .time-control { margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
+        .slider-container { display: flex; align-items: center; gap: 15px; margin-top: 10px; }
+        input[type=range] { flex-grow: 1; cursor: pointer; }
+        .time-display { font-size: 16px; font-weight: bold; color: #d63384; background: #fff0f6; padding: 5px 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="control-panel">
+        <h2>⏱️ 4D Traffic Engine: Spatiotemporal Analysis</h2>
+        <p style="margin: 0; font-size: 14px; color: #555;">
+            <b>Timeline Scrubber:</b> Move the slider to shift the active graph time. The map will only display incidents that were actively blocking roads at that exact moment.
+        </p>
+        
+        <div class="time-control">
+            <div style="display: flex; justify-content: space-between;">
+                <strong>Simulation Time:</strong>
+                <span id="currentTimeDisplay" class="time-display">Loading Dataset...</span>
+            </div>
+            <div class="slider-container">
+                <span id="minDateLabel" style="font-size: 12px; color: #888;">Start</span>
+                <input type="range" id="timeSlider" min="0" max="100" value="100" disabled>
+                <span id="maxDateLabel" style="font-size: 12px; color: #888;">End</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <div id="results" class="results-card">
+        <strong>Telemetry Console:</strong> Load dataset to begin.
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([12.9716, 77.5946], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+
+    let allIncidents = [];
+    let activeMarkers = [];
+    let diversionLayers = [];
+    const vectorColors = ['#007bff', '#28a745', '#fd7e14', '#6f42c1', '#17a2b8', '#e83e8c'];
+
+    // Load Dataset on Boot
+    window.onload = async () => {
+        try {
+            const response = await fetch('http://127.0.0.1:8000/get-dataset');
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                processTemporalData(result.data);
+            } else {
+                document.getElementById('currentTimeDisplay').innerText = "Error loading data.";
+            }
+        } catch (err) {
+            document.getElementById('currentTimeDisplay').innerText = "Backend Offline.";
+        }
+    };
+
+    function processTemporalData(data) {
+        let minTime = Infinity;
+        let maxTime = -Infinity;
+
+        // Parse dates and build a clean temporal dataset
+        allIncidents = data.map(inc => {
+            if (!inc.start_datetime) return null;
+            
+            const start = new Date(inc.start_datetime).getTime();
+            if (isNaN(start)) return null;
+
+            // Robust End Time Fallback Logic
+            let endStr = inc.end_datetime || inc.resolved_datetime || inc.closed_datetime;
+            if (!endStr && (inc.status === 'closed' || inc.status === 'resolved')) {
+                endStr = inc.modified_datetime;
+            }
+            
+            const end = endStr ? new Date(endStr).getTime() : Date.now(); // If active, extends to now
+
+            if (start < minTime) minTime = start;
+            if (end > maxTime && end <= Date.now()) maxTime = end;
+
+            return { ...inc, parsedStart: start, parsedEnd: end };
+        }).filter(inc => inc !== null);
+
+        // Setup the Time Slider bounds
+        const slider = document.getElementById('timeSlider');
+        slider.min = minTime;
+        slider.max = maxTime;
+        slider.value = maxTime; // Default to latest time
+        slider.disabled = false;
+
+        document.getElementById('minDateLabel').innerText = new Date(minTime).toLocaleDateString();
+        document.getElementById('maxDateLabel').innerText = new Date(maxTime).toLocaleDateString();
+
+        // Attach event listener to slider
+        slider.addEventListener('input', (e) => {
+            const selectedTime = parseInt(e.target.value);
+            updateMapToTime(selectedTime);
+        });
+
+        // Initial render at the latest time
+        updateMapToTime(maxTime);
+        document.getElementById('results').innerHTML = `✅ Successfully loaded <b>${allIncidents.length}</b> temporal incidents.`;
+    }
+
+    function updateMapToTime(timestamp) {
+        const displayDate = new Date(timestamp);
+        document.getElementById('currentTimeDisplay').innerText = displayDate.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+
+        // Clear existing map layers when time travels
+        activeMarkers.forEach(marker => map.removeLayer(marker));
+        diversionLayers.forEach(layer => map.removeLayer(layer));
+        activeMarkers = [];
+        diversionLayers = [];
+
+        // Filter incidents active at this exact millisecond
+        const activeAtTime = allIncidents.filter(inc => timestamp >= inc.parsedStart && timestamp <= inc.parsedEnd);
+
+        activeAtTime.forEach(incident => {
+            const lat = parseFloat(incident.latitude);
+            const lon = parseFloat(incident.longitude);
+            if (isNaN(lat) || isNaN(lon)) return;
+
+            const hazardIcon = L.divIcon({
+                html: `<div style="background-color: #000; width: 14px; height: 14px; border-radius: 50%; border: 3px solid #dc3545;"></div>`,
+                className: '', iconSize: [20, 20], iconAnchor: [10, 10]
+            });
+
+            const marker = L.marker([lat, lon], { icon: hazardIcon }).addTo(map);
+            
+            const popupContent = `
+                <div style="min-width: 200px;">
+                    <h4 style="margin:0 0 5px 0;">${incident.id}</h4>
+                    <b>Cause:</b> ${incident.event_cause.replace('_', ' ').toUpperCase()}<br>
+                    <b>Reported:</b> ${new Date(incident.parsedStart).toLocaleString()}<br>
+                    <button class="btn-divert" onclick="calculateDiversion(${lat}, ${lon}, '${incident.id}')">
+                        Calculate Flanks
+                    </button>
+                </div>
+            `;
+            marker.bindPopup(popupContent);
+            activeMarkers.push(marker);
+        });
+    }
+
+    window.calculateDiversion = async function(lat, lon, id) {
+        diversionLayers.forEach(layer => map.removeLayer(layer));
+        diversionLayers = [];
+        
+        map.closePopup();
+        document.getElementById('results').innerHTML = `<p>⏳ Severing graph edges for <b>${id}</b> and executing Dijkstra cascades...</p>`;
+
+        try {
+            const response = await fetch(`http://127.0.0.1:8000/get-local-diversions?incident_lat=${lat}&incident_lon=${lon}`);
+            const data = await response.json();
+
+            let resultsHtml = `
+                <h3>Diversion Report: ${id}</h3>
+                <p>Calculated <b>${data.total_diversions}</b> active multi-vector bypass routes.</p>
+                <div class="diversion-grid">`;
+
+            data.diversions.forEach((diversion, index) => {
+                if (diversion.status === 'success') {
+                    const color = vectorColors[index % vectorColors.length];
+                    
+                    const polyline = L.polyline(diversion.coordinates, {
+                        color: color, weight: 6, opacity: 0.9, dashArray: '1, 6'
+                    }).addTo(map);
+                    
+                    polyline.bindPopup(`<b>Detour for:</b> ${diversion.from_road}`);
+                    diversionLayers.push(polyline);
+
+                    resultsHtml += `
+                        <div class="vector-card status-success">
+                            <span class="legend-dot" style="background: ${color}"></span>
+                            <strong>From: ${diversion.from_road}</strong><br>
+                            <span style="color:#28a745; font-size:13px; font-weight:bold;">🟢 Flank Locked In</span>
+                        </div>`;
+                } else {
+                    resultsHtml += `
+                        <div class="vector-card status-gridlock">
+                            <span class="legend-dot" style="background: #dc3545"></span>
+                            <strong>From: ${diversion.from_road}</strong><br>
+                            <span style="color:#dc3545; font-size:13px; font-weight:bold;">🔴 Gridlock (No Path)</span>
+                        </div>`;
+                }
+            });
+
+            resultsHtml += `</div>`;
+            document.getElementById('results').innerHTML = resultsHtml;
+
+            if (diversionLayers.length > 0) {
+                const group = new L.featureGroup([L.marker([lat, lon]), ...diversionLayers]);
+                map.fitBounds(group.getBounds(), { padding: [50, 50] });
+            }
+
+        } catch (err) {
+            document.getElementById('results').innerHTML = `<p style="color:red">Engine Error: Ensure backend is running. (${err})</p>`;
+        }
+    }
+</script>
+</body>
+</html>
