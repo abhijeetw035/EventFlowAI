@@ -19,7 +19,7 @@
         .btn-divert:hover { background: #0056b3; }
         .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
         
-        /* New Time Slider Styles */
+        /* Time Slider Styles */
         .time-control { margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
         .slider-container { display: flex; align-items: center; gap: 15px; margin-top: 10px; }
         input[type=range] { flex-grow: 1; cursor: pointer; }
@@ -31,7 +31,7 @@
     <div class="control-panel">
         <h2>⏱️ 4D Traffic Engine: Spatiotemporal Analysis</h2>
         <p style="margin: 0; font-size: 14px; color: #555;">
-            <b>Timeline Scrubber:</b> Move the slider to shift the active graph time. The map will only display incidents that were actively blocking roads at that exact moment.
+            <b>Timeline Scrubber:</b> Move the slider to shift the active graph time. Click on an incident to isolate and reroute its localized cluster blockages.
         </p>
         
         <div class="time-control">
@@ -64,6 +64,17 @@
     let diversionLayers = [];
     const vectorColors = ['#007bff', '#28a745', '#fd7e14', '#6f42c1', '#17a2b8', '#e83e8c'];
 
+    // --- Haversine Distance Calculator (km) ---
+    function getDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; 
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+    }
+
     // Load Dataset on Boot
     window.onload = async () => {
         try {
@@ -84,20 +95,16 @@
         let minTime = Infinity;
         let maxTime = -Infinity;
 
-        // Parse dates and build a clean temporal dataset
         allIncidents = data.map(inc => {
             if (!inc.start_datetime) return null;
-            
             const start = new Date(inc.start_datetime).getTime();
             if (isNaN(start)) return null;
 
-            // Robust End Time Fallback Logic
             let endStr = inc.end_datetime || inc.resolved_datetime || inc.closed_datetime;
             if (!endStr && (inc.status === 'closed' || inc.status === 'resolved')) {
                 endStr = inc.modified_datetime;
             }
-            
-            const end = endStr ? new Date(endStr).getTime() : Date.now(); // If active, extends to now
+            const end = endStr ? new Date(endStr).getTime() : Date.now(); 
 
             if (start < minTime) minTime = start;
             if (end > maxTime && end <= Date.now()) maxTime = end;
@@ -105,23 +112,19 @@
             return { ...inc, parsedStart: start, parsedEnd: end };
         }).filter(inc => inc !== null);
 
-        // Setup the Time Slider bounds
         const slider = document.getElementById('timeSlider');
         slider.min = minTime;
         slider.max = maxTime;
-        slider.value = maxTime; // Default to latest time
+        slider.value = maxTime; 
         slider.disabled = false;
 
         document.getElementById('minDateLabel').innerText = new Date(minTime).toLocaleDateString();
         document.getElementById('maxDateLabel').innerText = new Date(maxTime).toLocaleDateString();
 
-        // Attach event listener to slider
         slider.addEventListener('input', (e) => {
-            const selectedTime = parseInt(e.target.value);
-            updateMapToTime(selectedTime);
+            updateMapToTime(parseInt(e.target.value));
         });
 
-        // Initial render at the latest time
         updateMapToTime(maxTime);
         document.getElementById('results').innerHTML = `✅ Successfully loaded <b>${allIncidents.length}</b> temporal incidents.`;
     }
@@ -130,13 +133,11 @@
         const displayDate = new Date(timestamp);
         document.getElementById('currentTimeDisplay').innerText = displayDate.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
-        // Clear existing map layers when time travels
         activeMarkers.forEach(marker => map.removeLayer(marker));
         diversionLayers.forEach(layer => map.removeLayer(layer));
         activeMarkers = [];
         diversionLayers = [];
 
-        // Filter incidents active at this exact millisecond
         const activeAtTime = allIncidents.filter(inc => timestamp >= inc.parsedStart && timestamp <= inc.parsedEnd);
 
         activeAtTime.forEach(incident => {
@@ -157,7 +158,7 @@
                     <b>Cause:</b> ${incident.event_cause.replace('_', ' ').toUpperCase()}<br>
                     <b>Reported:</b> ${new Date(incident.parsedStart).toLocaleString()}<br>
                     <button class="btn-divert" onclick="calculateDiversion(${lat}, ${lon}, '${incident.id}')">
-                        Calculate Flanks
+                        Calculate Macro-Flanks
                     </button>
                 </div>
             `;
@@ -171,15 +172,49 @@
         diversionLayers = [];
         
         map.closePopup();
-        document.getElementById('results').innerHTML = `<p>⏳ Severing graph edges for <b>${id}</b> and executing Dijkstra cascades...</p>`;
+        document.getElementById('results').innerHTML = `<p>⏳ Scanning for nearby incidents and computing local macro-flanks for <b>${id}</b>...</p>`;
+
+        // 1. FILTER BY TIME
+        const timestamp = parseInt(document.getElementById('timeSlider').value);
+        const activeAtTime = allIncidents.filter(inc => timestamp >= inc.parsedStart && timestamp <= inc.parsedEnd);
+        
+        // 2. FILTER BY GEOSPATIAL PROXIMITY (1.5 km radius)
+        const CLUSTER_RADIUS_KM = 1.5; 
+        const localCluster = activeAtTime.filter(inc => {
+            const incLat = parseFloat(inc.latitude);
+            const incLon = parseFloat(inc.longitude);
+            if (isNaN(incLat) || isNaN(incLon)) return false;
+            
+            const distance = getDistance(lat, lon, incLat, incLon);
+            return distance <= CLUSTER_RADIUS_KM;
+        });
+        
+        const clusterPayload = localCluster.map(inc => ({
+            lat: parseFloat(inc.latitude),
+            lon: parseFloat(inc.longitude)
+        }));
 
         try {
-            const response = await fetch(`http://127.0.0.1:8000/get-local-diversions?incident_lat=${lat}&incident_lon=${lon}`);
+            // 3. SEND LOCALIZED CLUSTER TO BACKEND
+            const response = await fetch(`http://127.0.0.1:8000/calculate-cluster-diversion`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target: { lat: lat, lon: lon },
+                    active_cluster: clusterPayload
+                })
+            });
             const data = await response.json();
 
+            // Draw visual cluster zone
+            const clusterZone = L.circle([lat, lon], {
+                color: '#dc3545', fillColor: '#dc3545', fillOpacity: 0.1, radius: CLUSTER_RADIUS_KM * 1000, dashArray: '5, 5'
+            }).addTo(map);
+            diversionLayers.push(clusterZone);
+
             let resultsHtml = `
-                <h3>Diversion Report: ${id}</h3>
-                <p>Calculated <b>${data.total_diversions}</b> active multi-vector bypass routes.</p>
+                <h3>Localized Corridor Report: ${id}</h3>
+                <p>Detected <b>${clusterPayload.length}</b> linked incidents within a ${CLUSTER_RADIUS_KM}km radius. Calculated <b>${data.total_diversions}</b> sweeping bypass routes.</p>
                 <div class="diversion-grid">`;
 
             data.diversions.forEach((diversion, index) => {
@@ -190,21 +225,21 @@
                         color: color, weight: 6, opacity: 0.9, dashArray: '1, 6'
                     }).addTo(map);
                     
-                    polyline.bindPopup(`<b>Detour for:</b> ${diversion.from_road}`);
+                    polyline.bindPopup(`<b>Sweeping Detour for:</b> ${diversion.from_road}`);
                     diversionLayers.push(polyline);
 
                     resultsHtml += `
                         <div class="vector-card status-success">
                             <span class="legend-dot" style="background: ${color}"></span>
                             <strong>From: ${diversion.from_road}</strong><br>
-                            <span style="color:#28a745; font-size:13px; font-weight:bold;">🟢 Flank Locked In</span>
+                            <span style="color:#28a745; font-size:13px; font-weight:bold;">🟢 Corridor Flank Engaged</span>
                         </div>`;
                 } else {
                     resultsHtml += `
                         <div class="vector-card status-gridlock">
                             <span class="legend-dot" style="background: #dc3545"></span>
                             <strong>From: ${diversion.from_road}</strong><br>
-                            <span style="color:#dc3545; font-size:13px; font-weight:bold;">🔴 Gridlock (No Path)</span>
+                            <span style="color:#dc3545; font-size:13px; font-weight:bold;">🔴 Local Gridlock (No Path)</span>
                         </div>`;
                 }
             });
