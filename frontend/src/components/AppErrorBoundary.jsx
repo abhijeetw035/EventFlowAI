@@ -14,17 +14,23 @@ export default class AppErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
 
     return (
-      <main className="flex min-h-screen items-center justify-center bg-console-bg p-6 text-console-text">
-        <section className="max-w-lg border border-red-500/50 bg-red-500/10 p-5">
-          <h1 className="text-lg font-semibold">The console hit a display error</h1>
-          <p className="mt-2 text-sm text-red-100">{this.state.error.message}</p>
-          <button
-            type="button"
-            className="mt-4 bg-sky-500 px-3 py-2 text-sm font-bold text-slate-950"
-            onClick={() => window.location.reload()}
-          >
-            Reload console
-          </button>
+      <main className="flex min-h-screen items-center justify-center bg-surface p-8 text-on-surface">
+        <section className="card-organic max-w-lg overflow-hidden p-0">
+          <div className="h-1.5 bg-gradient-to-r from-error to-error-container"></div>
+          <div className="p-8">
+            <h1 className="font-display text-2xl font-bold text-on-surface">Console Display Error</h1>
+            <p className="mt-2 text-sm text-on-surface-var">An unexpected error occurred in the interface.</p>
+            <p className="mt-5 card-nested rounded-xl px-4 py-3.5 text-sm text-error-on-cont">
+              {this.state.error.message}
+            </p>
+            <button
+              type="button"
+              className="btn-press mt-6 w-full rounded-xl bg-primary px-5 py-3.5 text-sm font-bold text-on-primary shadow-ambient transition-all hover:shadow-ambient-lg"
+              onClick={() => window.location.reload()}
+            >
+              Reload Console
+            </button>
+          </div>
         </section>
       </main>
     );

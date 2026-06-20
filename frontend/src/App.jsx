@@ -186,10 +186,10 @@ export default function App() {
   const [submittingForm, setSubmittingForm] = useState(false);
 
   // --- Point-to-Point Route Planner State ---
-  const [routeMode, setRouteMode] = useState(false);       // true = user is clicking A/B on map
-  const [routeStart, setRouteStart] = useState(null);      // { lat, lon } or null
-  const [routeEnd, setRouteEnd] = useState(null);          // { lat, lon } or null
-  const [routeResult, setRouteResult] = useState(null);    // API response or null
+  const [routeMode, setRouteMode] = useState(false);
+  const [routeStart, setRouteStart] = useState(null);
+  const [routeEnd, setRouteEnd] = useState(null);
+  const [routeResult, setRouteResult] = useState(null);
   const [routeCalculating, setRouteCalculating] = useState(false);
   const [routeStatus, setRouteStatus] = useState(
     'Click "Plan New Diversion Route", then click Point A and Point B on the map.'
@@ -226,7 +226,6 @@ export default function App() {
     });
   }
 
-  /** Returns incidents that are both temporally active AND spatially near the A-B corridor. */
   function getBlockingIncidents(a, b) {
     const bbox = getPaddedBoundingBox(a, b);
     return activeIncidents.filter((inc) => {
@@ -273,7 +272,6 @@ export default function App() {
     setError("");
     setSelectedName(incident.id || "Manual Incident");
     setDeploymentResult(null);
-    // Clear any active route to avoid visual confusion
     clearRoute();
     try {
       await runDiversion(incident);
@@ -334,12 +332,7 @@ export default function App() {
     }
   }
 
-  // ==========================================
-  // POINT-TO-POINT ROUTE PLANNER HANDLERS
-  // ==========================================
-
   function toggleRouteMode() {
-    // Always start a clean session when entering planning mode
     clearRoute();
     setRouteMode(true);
     setRouteStatus("Click Point A (origin) on the map.");
@@ -354,19 +347,16 @@ export default function App() {
     setRouteStatus('Click "Plan New Diversion Route", then click Point A and Point B on the map.');
   }
 
-  /** Called by MapView when the user clicks the map while in route-planning mode. */
   async function handleRoutePlanClick(latlng) {
     if (!routeMode) return;
 
     if (!routeStart) {
-      // First click → set Point A
       setRouteStart({ lat: latlng.lat, lon: latlng.lng });
       setRouteStatus("Point A set. Now click Point B (destination) on the map.");
     } else if (!routeEnd) {
-      // Second click → set Point B and compute
       const end = { lat: latlng.lat, lon: latlng.lng };
       setRouteEnd(end);
-      setRouteMode(false); // stop capturing clicks
+      setRouteMode(false);
 
       setRouteCalculating(true);
       setRouteStatus("Calculating diversion route, avoiding nearby active incidents...");
@@ -402,78 +392,111 @@ export default function App() {
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-1 bg-console-bg text-console-text lg:grid-cols-[380px_minmax(0,1fr)_380px]">
-      <aside className="border-r border-console-line bg-console-panel">
-        <div className="border-b border-console-line px-5 py-4">
-          <h1 className="text-lg font-bold text-console-text">EventFlow AI</h1>
-          <p className="text-xs text-console-muted">4D traffic diversion and deployment console</p>
+    <div className="flex min-h-screen flex-col bg-surface text-on-surface">
+      {/* ─── HEADER ─── */}
+      <header className="glass-organic sticky top-0 z-20 flex items-center justify-between px-8 py-4">
+        <div className="flex items-center gap-4">
+          {/* Organic logo mark */}
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary shadow-ambient-sm">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <div>
+            <h1 className="font-display text-xl font-bold tracking-tight text-on-surface">
+              EventFlow <span className="text-primary">AI</span>
+            </h1>
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.15em] text-on-surface-var">
+              Operations Console
+            </p>
+          </div>
         </div>
-        <div className="p-5">
-          <TimelineScrubber
-            minTime={minTime}
-            maxTime={maxTime}
-            value={selectedTime}
-            disabled={!allIncidents.length}
-            onChange={(value) => {
-              setSelectedTime(value);
-              setDiversionResult(null);
-              setSelectedTarget(null);
-              clearRoute();
-            }}
-          />
-          <RadiusSlider value={radiusKm} onChange={setRadiusKm} />
-          <RoutePlannerPanel
+        {/* Live count chip */}
+        <div className="flex items-center gap-2.5 rounded-full bg-surface-container-lowest px-4 py-2 shadow-ambient-sm">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-50"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
+          </span>
+          <span className="font-display text-sm font-bold text-on-surface">
+            {activeIncidents.length}
+          </span>
+          <span className="text-xs text-on-surface-var">live</span>
+        </div>
+      </header>
+
+      {/* ─── MAIN 3-COLUMN CONTENT ─── */}
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
+        {/* ─── LEFT SIDEBAR ─── */}
+        <aside className="w-full bg-surface-container-low lg:w-[400px] shrink-0">
+          <div className="h-full overflow-y-auto custom-scrollbar px-6 py-6 space-y-6">
+            <TimelineScrubber
+              minTime={minTime}
+              maxTime={maxTime}
+              value={selectedTime}
+              disabled={!allIncidents.length}
+              onChange={(value) => {
+                setSelectedTime(value);
+                setDiversionResult(null);
+                setSelectedTarget(null);
+                clearRoute();
+              }}
+            />
+            <RadiusSlider value={radiusKm} onChange={setRadiusKm} />
+            <RoutePlannerPanel
+              routeMode={routeMode}
+              routeStart={routeStart}
+              routeEnd={routeEnd}
+              routeStatus={routeStatus}
+              calculating={routeCalculating}
+              onToggle={toggleRouteMode}
+              onClear={clearRoute}
+            />
+            <IncidentForm
+              open={formOpen}
+              onToggle={() => setFormOpen((value) => !value)}
+              form={form}
+              onChange={handleFormChange}
+              onSubmit={handleFormSubmit}
+              mapPoint={form.lat && form.lon ? { lat: Number(form.lat), lon: Number(form.lon) } : null}
+              submitting={submittingForm}
+            />
+          </div>
+        </aside>
+
+        {/* ─── CENTER MAP ─── */}
+        <main className="relative flex-1 min-h-[520px] lg:min-h-0">
+          <MapView
+            incidents={activeIncidents}
+            temporaryIncident={temporaryIncident}
+            selectedTarget={selectedTarget}
+            radiusKm={radiusKm}
+            diversionResult={diversionResult}
+            formOpen={formOpen}
+            onMapClick={handleMapClick}
+            onCalculateDiversion={handleCalculateDiversion}
+            onRecommendDeployment={handleRecommendDeployment}
             routeMode={routeMode}
             routeStart={routeStart}
             routeEnd={routeEnd}
-            routeStatus={routeStatus}
-            calculating={routeCalculating}
-            onToggle={toggleRouteMode}
-            onClear={clearRoute}
+            routeResult={routeResult}
+            onRoutePlanClick={handleRoutePlanClick}
           />
-          <IncidentForm
-            open={formOpen}
-            onToggle={() => setFormOpen((value) => !value)}
-            form={form}
-            onChange={handleFormChange}
-            onSubmit={handleFormSubmit}
-            mapPoint={form.lat && form.lon ? { lat: Number(form.lat), lon: Number(form.lon) } : null}
-            submitting={submittingForm}
-          />
-          <div className="pt-4 text-xs text-console-muted">
-            Active incidents: <span className="font-semibold text-console-text">{activeIncidents.length}</span>
-          </div>
-        </div>
-      </aside>
+          <div className="map-edge-fade" />
+        </main>
 
-      <main className="min-h-[520px] lg:min-h-screen">
-        <MapView
-          incidents={activeIncidents}
-          temporaryIncident={temporaryIncident}
-          selectedTarget={selectedTarget}
-          radiusKm={radiusKm}
+        {/* ─── RIGHT TELEMETRY PANEL ─── */}
+        <DiversionResultsPanel
+          status={status}
+          selectedName={selectedName}
+          clusterCount={clusterCount}
           diversionResult={diversionResult}
-          formOpen={formOpen}
-          onMapClick={handleMapClick}
-          onCalculateDiversion={handleCalculateDiversion}
-          onRecommendDeployment={handleRecommendDeployment}
-          routeMode={routeMode}
-          routeStart={routeStart}
-          routeEnd={routeEnd}
+          deploymentResult={deploymentResult}
           routeResult={routeResult}
-          onRoutePlanClick={handleRoutePlanClick}
+          error={error}
         />
-      </main>
-
-      <DiversionResultsPanel
-        status={status}
-        selectedName={selectedName}
-        clusterCount={clusterCount}
-        diversionResult={diversionResult}
-        deploymentResult={deploymentResult}
-        routeResult={routeResult}
-        error={error}
-      />
+      </div>
     </div>
   );
 }

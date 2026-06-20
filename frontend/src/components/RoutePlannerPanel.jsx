@@ -21,49 +21,59 @@ export default function RoutePlannerPanel({
   onClear,
 }) {
   function toggleLabel() {
-    if (calculating) return "⏳ Calculating...";
-    if (!routeMode && !routeStart) return "🧭 Plan New Diversion Route";
-    if (routeMode && !routeStart) return "📍 Click Point A on the map...";
-    if (routeMode && routeStart && !routeEnd) return "📍 Click Point B on the map...";
-    return "🧭 Plan New Diversion Route";
+    if (calculating) return "Calculating…";
+    if (!routeMode && !routeStart) return "Plan New Route";
+    if (routeMode && !routeStart) return "Click Point A…";
+    if (routeMode && routeStart && !routeEnd) return "Click Point B…";
+    return "Plan New Route";
   }
 
   const isActive = routeMode || calculating;
 
   return (
-    <section className="border-b border-console-line py-4">
-      <div className="mb-3">
-        <h2 className="text-sm font-semibold text-console-text">Point-to-Point Diversion</h2>
-        <p className="text-xs text-console-muted">
-          Plan a route between two map points that avoids any incident active near that corridor.
+    <section className="card-organic p-6 animate-fadeIn" style={{ animationDelay: "120ms" }}>
+      <div className="mb-5">
+        <h2 className="font-display text-base font-bold text-on-surface">Point-to-Point Diversion</h2>
+        <p className="mt-1 text-xs text-on-surface-var">
+          Plan a route between two map points that avoids active incidents.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-3">
         <button
           type="button"
           onClick={onToggle}
           disabled={calculating}
-          className={`flex-1 rounded px-3 py-2 text-xs font-bold transition-colors disabled:opacity-60 ${
+          className={`btn-press flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all duration-200 disabled:opacity-50 ${
             isActive
-              ? "bg-pink-600 text-white hover:bg-pink-500"
-              : "bg-violet-600 text-white hover:bg-violet-500"
+              ? "bg-tertiary text-on-tertiary shadow-ambient"
+              : "bg-primary text-on-primary shadow-ambient hover:shadow-ambient-lg"
           }`}
         >
-          {toggleLabel()}
+          <span className="flex items-center justify-center gap-2">
+            {calculating && (
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <circle cx="12" cy="12" r="10" opacity="0.25"/>
+                <path d="M12 2a10 10 0 0 1 10 10" />
+              </svg>
+            )}
+            {toggleLabel()}
+          </span>
         </button>
         <button
           type="button"
           onClick={onClear}
           disabled={calculating}
-          className="rounded bg-console-panel2 px-3 py-2 text-xs font-bold text-console-muted hover:bg-console-line hover:text-console-text disabled:opacity-60"
+          className="btn-press rounded-xl bg-surface-container-high px-4 py-3 text-sm font-semibold text-on-surface-var transition-all duration-200 hover:bg-surface-container-highest disabled:opacity-50"
         >
-          ✖ Clear
+          Clear
         </button>
       </div>
 
       {routeStatus && (
-        <p className="mt-2 text-xs text-console-muted leading-relaxed">{routeStatus}</p>
+        <p className="mt-4 rounded-xl bg-surface-container-low p-3.5 text-xs leading-relaxed text-on-surface-var">
+          {routeStatus}
+        </p>
       )}
     </section>
   );
