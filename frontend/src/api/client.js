@@ -22,7 +22,20 @@ export function getDataset() {
 }
 
 export function calculateClusterDiversion(payload) {
+  // NOTE: radius_km is intentionally excluded from the payload.
+  // The frontend already filters the cluster by radius before calling this.
+  // The backend receives only the pre-filtered active_cluster list.
   return request("/calculate-cluster-diversion", {
+    method: "POST",
+    body: JSON.stringify({
+      target: payload.target,
+      active_cluster: payload.active_cluster,
+    }),
+  });
+}
+
+export function calculateRouteDiversion(payload) {
+  return request("/calculate-route-diversion", {
     method: "POST",
     body: JSON.stringify(payload),
   });

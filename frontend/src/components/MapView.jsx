@@ -18,6 +18,19 @@ const tempIcon = L.divIcon({
   iconAnchor: [11, 11],
 });
 
+function makePointIcon(label, color) {
+  return L.divIcon({
+    html: `<div style="background:${color};color:white;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);">${label}</div>`,
+    className: "",
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  });
+}
+
+const pointAIcon = makePointIcon("A", "#22c55e");
+const pointBIcon = makePointIcon("B", "#ef4444");
+
+/** Handles form-mode clicks (for placing a manual incident). */
 function MapClickHandler({ enabled, onMapClick }) {
   useMapEvents({
     click(event) {
@@ -26,6 +39,40 @@ function MapClickHandler({ enabled, onMapClick }) {
       }
     },
   });
+  return null;
+}
+
+/**
+ * Handles route-planning clicks (Point A / Point B capture).
+ * Fires onRoutePlanClick with the raw Leaflet latlng object.
+ * Must be a separate handler so incident marker clicks can call
+ * L.DomEvent.stopPropagation without breaking form mode.
+ */
+function RoutePlanClickHandler({ enabled, onRoutePlanClick }) {
+  useMapEvents({
+    click(event) {
+      if (enabled) {
+        onRoutePlanClick(event.latlng);
+      }
+    },
+  });
+  return null;
+}
+
+/** Changes the map cursor when route-planning mode is active. */
+function CursorController({ routeMode }) {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    if (routeMode) {
+      container.style.cursor = "crosshair";
+    } else {
+      container.style.cursor = "";
+    }
+    return () => {
+      container.style.cursor = "";
+    };
+  }, [map, routeMode]);
   return null;
 }
 
@@ -52,6 +99,28 @@ function FitDiversions({ target, diversions, radiusKm }) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     }
   }, [map, target, diversions, radiusKm]);
+
+  return null;
+}
+
+/** Auto-zooms to show the A→B route polyline and both endpoint markers. */
+function FitRoute({ routeStart, routeEnd, routeResult }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!routeStart || !routeEnd) return;
+    if (routeResult?.status !== "success" || !Array.isArray(routeResult.coordinates)) return;
+
+    const group = L.featureGroup([
+      L.marker([routeStart.lat, routeStart.lon]),
+      L.marker([routeEnd.lat, routeEnd.lon]),
+      L.polyline(routeResult.coordinates),
+    ]);
+
+    if (group.getBounds().isValid()) {
+      map.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
+    }
+  }, [map, routeStart, routeEnd, routeResult]);
 
   return null;
 }
@@ -119,6 +188,12 @@ export default function MapView({
   onMapClick,
   onCalculateDiversion,
   onRecommendDeployment,
+  // Route planner props
+  routeMode,
+  routeStart,
+  routeEnd,
+  routeResult,
+  onRoutePlanClick,
 }) {
   const successfulDiversions =
     diversionResult?.diversions?.filter(
@@ -134,13 +209,26 @@ export default function MapView({
     return rows;
   }, [incidents, temporaryIncident]);
 
+  const routeCoords =
+    routeResult?.status === "success" && Array.isArray(routeResult.coordinates)
+      ? routeResult.coordinates
+      : null;
+
   return (
     <MapContainer center={[12.9716, 77.5946]} zoom={12} className="h-full">
       <TileLayer
         attribution="© OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+
+      {/* Form-mode click (manual incident placement) */}
       <MapClickHandler enabled={formOpen} onMapClick={onMapClick} />
+
+      {/* Route-planning click (A/B capture) */}
+      <RoutePlanClickHandler enabled={routeMode} onRoutePlanClick={onRoutePlanClick} />
+
+      {/* Cursor crosshair when planning a route */}
+      <CursorController routeMode={routeMode} />
 
       {markers.map(({ incident, temporary }) => {
         const lat = Number(incident.latitude ?? incident.lat);
@@ -160,6 +248,7 @@ export default function MapView({
         );
       })}
 
+      {/* Cluster radius circle drawn around the selected diversion target */}
       {selectedTarget && (
         <Circle
           center={[selectedTarget.lat, selectedTarget.lon]}
@@ -168,6 +257,7 @@ export default function MapView({
         />
       )}
 
+      {/* Cluster diversion polylines */}
       {successfulDiversions.map((diversion, index) => (
           <Fragment key={`${diversion.from_road}-${index}`}>
             <Polyline
@@ -188,6 +278,43 @@ export default function MapView({
         ))}
 
       <FitDiversions target={selectedTarget} diversions={successfulDiversions} radiusKm={radiusKm} />
+
+      {/* ============================================
+          POINT-TO-POINT ROUTE PLANNER LAYERS
+          ============================================ */}
+
+      {/* Point A marker */}
+      {routeStart && (
+        <Marker position={[routeStart.lat, routeStart.lon]} icon={pointAIcon} />
+      )}
+
+      {/* Point B marker */}
+      {routeEnd && (
+        <Marker position={[routeEnd.lat, routeEnd.lon]} icon={pointBIcon} />
+      )}
+
+      {/* Computed diversion route polyline (purple) */}
+      {routeCoords && (
+        <>
+          <Polyline
+            positions={routeCoords}
+            pathOptions={{ color: "#1e0a3c", weight: 10, opacity: 0.85 }}
+          />
+          <Polyline
+            positions={routeCoords}
+            pathOptions={{
+              color: "#6f42c1",
+              weight: 6,
+              opacity: 1,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+        </>
+      )}
+
+      {/* Auto-zoom to route bounds after calculation */}
+      <FitRoute routeStart={routeStart} routeEnd={routeEnd} routeResult={routeResult} />
     </MapContainer>
   );
 }
