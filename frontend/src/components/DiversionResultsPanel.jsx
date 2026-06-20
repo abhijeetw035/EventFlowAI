@@ -2,7 +2,7 @@ import DeploymentPanel from "./DeploymentPanel.jsx";
 
 const vectorColors = ["#38bdf8", "#22c55e", "#f97316", "#a78bfa", "#06b6d4", "#ec4899"];
 
-export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, error }) {
+export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, routeResult, error }) {
   const diversions = diversionResult?.diversions || [];
 
   return (
@@ -21,6 +21,62 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
 
         <DeploymentPanel recommendation={deploymentResult} />
 
+        {/* ============================================
+            POINT-TO-POINT ROUTE RESULT
+            ============================================ */}
+        {routeResult && (
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-console-text">Point-to-Point Diversion Report</h3>
+              <p className="text-xs text-console-muted">
+                Checked <span className="font-semibold text-console-text">{routeResult.blockingCount ?? 0}</span> active
+                incident(s) near the selected corridor.
+              </p>
+            </div>
+
+            <div className="grid gap-3">
+              {routeResult.status === "success" && (
+                <article className="border-l-4 p-3 border-violet-500 bg-violet-500/10 text-violet-100">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: "#6f42c1" }} />
+                    <strong className="text-sm">Route A → B</strong>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-green-300">🟢 Diversion Route Calculated</p>
+                </article>
+              )}
+
+              {routeResult.status === "gridlock" && (
+                <article className="border-l-4 p-3 border-red-500 bg-red-500/10 text-red-100">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-red-500" />
+                    <strong className="text-sm">Route A → B</strong>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-red-300">🔴 No Diversion Possible (Gridlock)</p>
+                  {routeResult.message && (
+                    <p className="mt-1 text-xs text-red-400">{routeResult.message}</p>
+                  )}
+                </article>
+              )}
+
+              {routeResult.status === "error" && (
+                <article className="border-l-4 p-3 border-orange-500 bg-orange-500/10 text-orange-100">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-orange-500" />
+                    <strong className="text-sm">Route A → B</strong>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-orange-300">⚠️ Engine Error</p>
+                  {routeResult.message && (
+                    <p className="mt-1 text-xs text-orange-400">{routeResult.message}</p>
+                  )}
+                </article>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ============================================
+            CLUSTER DIVERSION RESULTS
+            ============================================ */}
         {diversionResult && (
           <section className="space-y-3">
             <div>

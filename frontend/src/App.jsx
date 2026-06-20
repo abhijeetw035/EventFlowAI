@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { calculateClusterDiversion, getDataset, predictDeployment } from "./api/client.js";
+import { calculateClusterDiversion, calculateRouteDiversion, getDataset, predictDeployment } from "./api/client.js";
 import DiversionResultsPanel from "./components/DiversionResultsPanel.jsx";
 import IncidentForm from "./components/IncidentForm.jsx";
 import MapView from "./components/MapView.jsx";
 import RadiusSlider from "./components/RadiusSlider.jsx";
+import RoutePlannerPanel from "./components/RoutePlannerPanel.jsx";
 import TimelineScrubber from "./components/TimelineScrubber.jsx";
 
 const defaultForm = {
@@ -70,6 +71,31 @@ function getDistance(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   return radius * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+/** Pads a bounding box around A and B so incidents just off the direct line are still caught. */
+function getPaddedBoundingBox(a, b, paddingRatio = 0.3, minPaddingKm = 0.5) {
+  const minLat = Math.min(a.lat, b.lat);
+  const maxLat = Math.max(a.lat, b.lat);
+  const minLon = Math.min(a.lon, b.lon);
+  const maxLon = Math.max(a.lon, b.lon);
+
+  const latSpan = maxLat - minLat;
+  const lonSpan = maxLon - minLon;
+
+  const avgLat = (minLat + maxLat) / 2;
+  const kmPerDegLat = 111.0;
+  const kmPerDegLon = 111.0 * Math.cos((avgLat * Math.PI) / 180);
+
+  const latPadding = Math.max(latSpan * paddingRatio, minPaddingKm / kmPerDegLat);
+  const lonPadding = Math.max(lonSpan * paddingRatio, minPaddingKm / kmPerDegLon);
+
+  return {
+    minLat: minLat - latPadding,
+    maxLat: maxLat + latPadding,
+    minLon: minLon - lonPadding,
+    maxLon: maxLon + lonPadding,
+  };
 }
 
 function readString(incident, keys, fallback = "unknown") {
@@ -159,6 +185,16 @@ export default function App() {
   const [temporaryIncident, setTemporaryIncident] = useState(null);
   const [submittingForm, setSubmittingForm] = useState(false);
 
+  // --- Point-to-Point Route Planner State ---
+  const [routeMode, setRouteMode] = useState(false);       // true = user is clicking A/B on map
+  const [routeStart, setRouteStart] = useState(null);      // { lat, lon } or null
+  const [routeEnd, setRouteEnd] = useState(null);          // { lat, lon } or null
+  const [routeResult, setRouteResult] = useState(null);    // API response or null
+  const [routeCalculating, setRouteCalculating] = useState(false);
+  const [routeStatus, setRouteStatus] = useState(
+    'Click "Plan New Diversion Route", then click Point A and Point B on the map.'
+  );
+
   useEffect(() => {
     getDataset()
       .then((result) => {
@@ -190,6 +226,17 @@ export default function App() {
     });
   }
 
+  /** Returns incidents that are both temporally active AND spatially near the A-B corridor. */
+  function getBlockingIncidents(a, b) {
+    const bbox = getPaddedBoundingBox(a, b);
+    return activeIncidents.filter((inc) => {
+      const lat = Number(inc.latitude);
+      const lon = Number(inc.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+      return lat >= bbox.minLat && lat <= bbox.maxLat && lon >= bbox.minLon && lon <= bbox.maxLon;
+    });
+  }
+
   async function runDiversion(incident, clusterOverride) {
     const lat = Number(incident.latitude ?? incident.lat);
     const lon = Number(incident.longitude ?? incident.lon);
@@ -207,7 +254,6 @@ export default function App() {
     const response = await calculateClusterDiversion({
       target: { lat, lon },
       active_cluster: clusterPayload,
-      radius_km: radiusKm,
     });
     const result = normalizeDiversionResult(response);
     setDiversionResult(result);
@@ -227,6 +273,8 @@ export default function App() {
     setError("");
     setSelectedName(incident.id || "Manual Incident");
     setDeploymentResult(null);
+    // Clear any active route to avoid visual confusion
+    clearRoute();
     try {
       await runDiversion(incident);
     } catch (err) {
@@ -286,6 +334,73 @@ export default function App() {
     }
   }
 
+  // ==========================================
+  // POINT-TO-POINT ROUTE PLANNER HANDLERS
+  // ==========================================
+
+  function toggleRouteMode() {
+    // Always start a clean session when entering planning mode
+    clearRoute();
+    setRouteMode(true);
+    setRouteStatus("Click Point A (origin) on the map.");
+  }
+
+  function clearRoute() {
+    setRouteMode(false);
+    setRouteStart(null);
+    setRouteEnd(null);
+    setRouteResult(null);
+    setRouteCalculating(false);
+    setRouteStatus('Click "Plan New Diversion Route", then click Point A and Point B on the map.');
+  }
+
+  /** Called by MapView when the user clicks the map while in route-planning mode. */
+  async function handleRoutePlanClick(latlng) {
+    if (!routeMode) return;
+
+    if (!routeStart) {
+      // First click → set Point A
+      setRouteStart({ lat: latlng.lat, lon: latlng.lng });
+      setRouteStatus("Point A set. Now click Point B (destination) on the map.");
+    } else if (!routeEnd) {
+      // Second click → set Point B and compute
+      const end = { lat: latlng.lat, lon: latlng.lng };
+      setRouteEnd(end);
+      setRouteMode(false); // stop capturing clicks
+
+      setRouteCalculating(true);
+      setRouteStatus("Calculating diversion route, avoiding nearby active incidents...");
+
+      const blocking = getBlockingIncidents(routeStart, end);
+      const blockingPayload = blocking.map((inc) => ({
+        lat: Number(inc.latitude),
+        lon: Number(inc.longitude),
+      }));
+
+      try {
+        const data = await calculateRouteDiversion({
+          start: routeStart,
+          end,
+          blocking_incidents: blockingPayload,
+        });
+        setRouteResult({ ...data, blockingCount: blockingPayload.length });
+
+        if (data.status === "success") {
+          setRouteStatus(`Route calculated — avoided ${blockingPayload.length} active incident(s).`);
+        } else if (data.status === "gridlock") {
+          setRouteStatus(`No diversion possible — gridlock with ${blockingPayload.length} active incident(s).`);
+        } else {
+          setRouteStatus(`Engine error: ${data.message || "Unknown error."}`);
+        }
+      } catch (err) {
+        setRouteResult({ status: "error", message: err.message });
+        setRouteStatus(`Engine error: ${err.message}`);
+      } finally {
+        setRouteCalculating(false);
+      }
+    }
+  }
+
   return (
     <div className="grid min-h-screen grid-cols-1 bg-console-bg text-console-text lg:grid-cols-[380px_minmax(0,1fr)_380px]">
       <aside className="border-r border-console-line bg-console-panel">
@@ -303,9 +418,19 @@ export default function App() {
               setSelectedTime(value);
               setDiversionResult(null);
               setSelectedTarget(null);
+              clearRoute();
             }}
           />
           <RadiusSlider value={radiusKm} onChange={setRadiusKm} />
+          <RoutePlannerPanel
+            routeMode={routeMode}
+            routeStart={routeStart}
+            routeEnd={routeEnd}
+            routeStatus={routeStatus}
+            calculating={routeCalculating}
+            onToggle={toggleRouteMode}
+            onClear={clearRoute}
+          />
           <IncidentForm
             open={formOpen}
             onToggle={() => setFormOpen((value) => !value)}
@@ -332,6 +457,11 @@ export default function App() {
           onMapClick={handleMapClick}
           onCalculateDiversion={handleCalculateDiversion}
           onRecommendDeployment={handleRecommendDeployment}
+          routeMode={routeMode}
+          routeStart={routeStart}
+          routeEnd={routeEnd}
+          routeResult={routeResult}
+          onRoutePlanClick={handleRoutePlanClick}
         />
       </main>
 
@@ -341,6 +471,7 @@ export default function App() {
         clusterCount={clusterCount}
         diversionResult={diversionResult}
         deploymentResult={deploymentResult}
+        routeResult={routeResult}
         error={error}
       />
     </div>
