@@ -2,33 +2,38 @@ import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMa
 import L from "leaflet";
 import { Fragment, useEffect, useMemo } from "react";
 
-const vectorColors = ["#38bdf8", "#22c55e", "#f97316", "#a78bfa", "#06b6d4", "#ec4899"];
+const vectorColors = ["#006e1c", "#0061a4", "#8b5000", "#6750a4", "#006a6a", "#ba1a1a"];
 
 const hazardIcon = L.divIcon({
-  html: '<div style="background:#020617;width:14px;height:14px;border-radius:999px;border:3px solid #ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.2)"></div>',
+  html: `<div style="position:relative;width:16px;height:16px;">
+    <div style="position:absolute;inset:0;background:#6750a4;border-radius:50%;border:2.5px solid #ffffff;box-shadow:0 2px 8px rgba(103,80,164,0.4);"></div>
+    <div class="marker-ring"></div>
+  </div>`,
   className: "",
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
 });
 
 const tempIcon = L.divIcon({
-  html: '<div style="background:#38bdf8;width:14px;height:14px;border-radius:999px;border:3px solid #e0f2fe;box-shadow:0 0 0 4px rgba(56,189,248,.25)"></div>',
+  html: `<div style="position:relative;width:18px;height:18px;">
+    <div style="background:#006e1c;width:18px;height:18px;border-radius:50%;border:2.5px solid #ffffff;box-shadow:0 2px 10px rgba(0,110,28,0.3);"></div>
+  </div>`,
   className: "",
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 });
 
 function makePointIcon(label, color) {
   return L.divIcon({
-    html: `<div style="background:${color};color:white;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);">${label}</div>`,
+    html: `<div style="background:${color};color:white;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;font-family:'Manrope',sans-serif;border:3px solid white;box-shadow:0 4px 14px rgba(0,0,0,0.15);">${label}</div>`,
     className: "",
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
   });
 }
 
-const pointAIcon = makePointIcon("A", "#22c55e");
-const pointBIcon = makePointIcon("B", "#ef4444");
+const pointAIcon = makePointIcon("A", "#006e1c");
+const pointBIcon = makePointIcon("B", "#8b5000");
 
 /** Handles form-mode clicks (for placing a manual incident). */
 function MapClickHandler({ enabled, onMapClick }) {
@@ -146,30 +151,30 @@ function IncidentMarker({
       icon={temporary ? tempIcon : hazardIcon}
     >
       <Popup>
-        <div className="min-w-56 space-y-2">
+        <div className="min-w-[220px] space-y-3">
           <div>
-            <h3 className="m-0 text-sm font-bold text-console-text">{incident.id || "Manual Incident"}</h3>
-            <p className="m-0 text-xs text-console-muted">
-              Cause: {String(incident.event_cause || "unknown").replaceAll("_", " ").toUpperCase()}
+            <h3 className="m-0 font-display text-sm font-bold text-on-surface">{incident.id || "Manual Incident"}</h3>
+            <p className="m-0 mt-1 text-[0.6875rem] font-medium uppercase tracking-[0.05em] text-on-surface-var">
+              {String(incident.event_cause || "unknown").replaceAll("_", " ")}
             </p>
-            <p className="m-0 text-xs text-console-muted">
-              Reported: {incident.parsedStart ? new Date(incident.parsedStart).toLocaleString() : "New report"}
+            <p className="m-0 mt-0.5 text-[0.6875rem] text-on-surface-var">
+              {incident.parsedStart ? new Date(incident.parsedStart).toLocaleString() : "New report"}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
               onClick={() => runAfterClosingPopup(onCalculateDiversion)}
-              className="bg-sky-500 px-2 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400"
+              className="btn-press rounded-xl bg-primary px-3 py-2.5 text-[0.6875rem] font-bold text-on-primary shadow-ambient-sm transition-all hover:shadow-ambient"
             >
-              Calculate Macro-Flanks
+              Macro-Flanks
             </button>
             <button
               type="button"
               onClick={() => runAfterClosingPopup(onRecommendDeployment)}
-              className="bg-slate-200 px-2 py-2 text-xs font-bold text-slate-950 hover:bg-white"
+              className="btn-press rounded-xl bg-surface-container-high px-3 py-2.5 text-[0.6875rem] font-bold text-on-surface transition-all hover:bg-surface-container-highest"
             >
-              Recommend Deployment
+              Deployment
             </button>
           </div>
         </div>
@@ -216,8 +221,9 @@ export default function MapView({
 
   return (
     <MapContainer center={[12.9716, 77.5946]} zoom={12} className="h-full">
+      {/* Standard OSM tiles — clean white map */}
       <TileLayer
-        attribution="© OpenStreetMap contributors"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
@@ -253,7 +259,7 @@ export default function MapView({
         <Circle
           center={[selectedTarget.lat, selectedTarget.lon]}
           radius={radiusKm * 1000}
-          pathOptions={{ color: "#ef4444", fillColor: "#ef4444", fillOpacity: 0.1, dashArray: "5 5" }}
+          pathOptions={{ color: "#6750a4", fillColor: "#6750a4", fillOpacity: 0.06, dashArray: "6 4", weight: 1.5 }}
         />
       )}
 
@@ -262,14 +268,14 @@ export default function MapView({
           <Fragment key={`${diversion.from_road}-${index}`}>
             <Polyline
               positions={diversion.coordinates}
-              pathOptions={{ color: "#020617", weight: 10, opacity: 0.85 }}
+              pathOptions={{ color: "#ffffff", weight: 10, opacity: 0.9 }}
             />
             <Polyline
               positions={diversion.coordinates}
               pathOptions={{
                 color: vectorColors[index % vectorColors.length],
-                weight: 6,
-                opacity: 1,
+                weight: 5,
+                opacity: 0.9,
                 lineCap: "round",
                 lineJoin: "round",
               }}
@@ -293,19 +299,19 @@ export default function MapView({
         <Marker position={[routeEnd.lat, routeEnd.lon]} icon={pointBIcon} />
       )}
 
-      {/* Computed diversion route polyline (purple) */}
+      {/* Computed diversion route polyline */}
       {routeCoords && (
         <>
           <Polyline
             positions={routeCoords}
-            pathOptions={{ color: "#1e0a3c", weight: 10, opacity: 0.85 }}
+            pathOptions={{ color: "#ffffff", weight: 10, opacity: 0.9 }}
           />
           <Polyline
             positions={routeCoords}
             pathOptions={{
-              color: "#6f42c1",
-              weight: 6,
-              opacity: 1,
+              color: "#6750a4",
+              weight: 5,
+              opacity: 0.9,
               lineCap: "round",
               lineJoin: "round",
             }}

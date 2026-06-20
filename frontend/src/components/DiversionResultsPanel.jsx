@@ -1,113 +1,139 @@
 import DeploymentPanel from "./DeploymentPanel.jsx";
 
-const vectorColors = ["#38bdf8", "#22c55e", "#f97316", "#a78bfa", "#06b6d4", "#ec4899"];
+const vectorColors = ["#006e1c", "#0061a4", "#8b5000", "#6750a4", "#006a6a", "#ba1a1a"];
 
 export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, routeResult, error }) {
   const diversions = diversionResult?.diversions || [];
 
   return (
-    <aside className="flex min-h-0 flex-col border-l border-console-line bg-console-panel">
-      <div className="border-b border-console-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-console-text">Telemetry Console</h2>
-        <p className="text-xs text-console-muted">{selectedName || "Load dataset or select an incident to begin."}</p>
+    <aside className="relative z-10 flex min-h-0 w-full flex-col bg-surface-container-low lg:w-[400px] shrink-0">
+      {/* Panel header */}
+      <div className="px-6 pt-6 pb-4">
+        <h2 className="font-display text-lg font-bold text-on-surface">Telemetry</h2>
+        <p className="mt-1 text-xs text-on-surface-var">
+          {selectedName || "Select an incident to begin."}
+        </p>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto custom-scrollbar px-6 pb-6">
+        {/* Status */}
         {status && (
-          <div className="border border-console-line bg-console-panel2 p-3 text-sm text-console-text">{status}</div>
+          <div className="animate-fadeIn card-nested flex items-center gap-3 p-4">
+            <svg className="h-4 w-4 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <circle cx="12" cy="12" r="10" opacity="0.2"/>
+              <path d="M12 2a10 10 0 0 1 10 10"/>
+            </svg>
+            <span className="text-xs leading-relaxed text-on-surface-var">{status}</span>
+          </div>
         )}
 
-        {error && <div className="border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-200">{error}</div>}
+        {/* Error */}
+        {error && (
+          <div className="animate-fadeIn flex items-start gap-3 rounded-2xl bg-error-container p-4">
+            <svg className="h-4 w-4 shrink-0 text-error mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            <span className="text-xs leading-relaxed text-error-on-cont">{error}</span>
+          </div>
+        )}
 
         <DeploymentPanel recommendation={deploymentResult} />
 
-        {/* ============================================
-            POINT-TO-POINT ROUTE RESULT
-            ============================================ */}
+        {/* ─── POINT-TO-POINT ROUTE RESULT ─── */}
         {routeResult && (
-          <section className="space-y-3">
+          <section className="animate-fadeIn space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-console-text">Point-to-Point Diversion Report</h3>
-              <p className="text-xs text-console-muted">
-                Checked <span className="font-semibold text-console-text">{routeResult.blockingCount ?? 0}</span> active
-                incident(s) near the selected corridor.
+              <h3 className="font-display text-base font-bold text-on-surface">Route Diversion Report</h3>
+              <p className="mt-1 text-xs text-on-surface-var">
+                Checked <span className="font-display font-bold text-on-surface">{routeResult.blockingCount ?? 0}</span> active
+                incident(s) near the corridor.
               </p>
             </div>
 
             <div className="grid gap-3">
               {routeResult.status === "success" && (
-                <article className="border-l-4 p-3 border-violet-500 bg-violet-500/10 text-violet-100">
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: "#6f42c1" }} />
-                    <strong className="text-sm">Route A → B</strong>
+                <article className="card-organic overflow-hidden p-0">
+                  <div className="h-1.5 bg-gradient-to-r from-primary to-primary-container"></div>
+                  <div className="p-4">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-3.5 w-3.5 rounded-full bg-primary" />
+                      <strong className="font-display text-sm font-bold text-on-surface">Route A → B</strong>
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-primary">Diversion Route Calculated</p>
                   </div>
-                  <p className="mt-1 text-xs font-semibold text-green-300">🟢 Diversion Route Calculated</p>
                 </article>
               )}
 
               {routeResult.status === "gridlock" && (
-                <article className="border-l-4 p-3 border-red-500 bg-red-500/10 text-red-100">
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full bg-red-500" />
-                    <strong className="text-sm">Route A → B</strong>
+                <article className="card-organic overflow-hidden p-0">
+                  <div className="h-1.5 bg-gradient-to-r from-error to-error-container"></div>
+                  <div className="p-4">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-3.5 w-3.5 rounded-full bg-error" />
+                      <strong className="font-display text-sm font-bold text-on-surface">Route A → B</strong>
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-error">No Diversion Possible (Gridlock)</p>
+                    {routeResult.message && (
+                      <p className="mt-1 text-[0.6875rem] text-on-surface-var">{routeResult.message}</p>
+                    )}
                   </div>
-                  <p className="mt-1 text-xs font-semibold text-red-300">🔴 No Diversion Possible (Gridlock)</p>
-                  {routeResult.message && (
-                    <p className="mt-1 text-xs text-red-400">{routeResult.message}</p>
-                  )}
                 </article>
               )}
 
               {routeResult.status === "error" && (
-                <article className="border-l-4 p-3 border-orange-500 bg-orange-500/10 text-orange-100">
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full bg-orange-500" />
-                    <strong className="text-sm">Route A → B</strong>
+                <article className="card-organic overflow-hidden p-0">
+                  <div className="h-1.5 bg-gradient-to-r from-tertiary to-tertiary-container"></div>
+                  <div className="p-4">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-3.5 w-3.5 rounded-full bg-tertiary" />
+                      <strong className="font-display text-sm font-bold text-on-surface">Route A → B</strong>
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-tertiary">Engine Error</p>
+                    {routeResult.message && (
+                      <p className="mt-1 text-[0.6875rem] text-on-surface-var">{routeResult.message}</p>
+                    )}
                   </div>
-                  <p className="mt-1 text-xs font-semibold text-orange-300">⚠️ Engine Error</p>
-                  {routeResult.message && (
-                    <p className="mt-1 text-xs text-orange-400">{routeResult.message}</p>
-                  )}
                 </article>
               )}
             </div>
           </section>
         )}
 
-        {/* ============================================
-            CLUSTER DIVERSION RESULTS
-            ============================================ */}
+        {/* ─── CLUSTER DIVERSION RESULTS ─── */}
         {diversionResult && (
-          <section className="space-y-3">
+          <section className="animate-fadeIn space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-console-text">Localized Corridor Report</h3>
-              <p className="text-xs text-console-muted">
-                Detected {clusterCount} linked incidents. Calculated {diversionResult.total_diversions} sweeping bypass
-                routes.
+              <h3 className="font-display text-base font-bold text-on-surface">Corridor Report</h3>
+              <p className="mt-1 text-xs text-on-surface-var">
+                <span className="font-display font-bold text-on-surface">{clusterCount}</span> linked incidents ·{" "}
+                <span className="font-display font-bold text-on-surface">{diversionResult.total_diversions}</span> bypass routes
               </p>
             </div>
 
-            <div className="grid gap-3">
+            <div className="space-y-3">
               {diversions.map((diversion, index) => {
                 const isSuccess = diversion.status === "success";
-                const color = isSuccess ? vectorColors[index % vectorColors.length] : "#ef4444";
+                const color = isSuccess ? vectorColors[index % vectorColors.length] : "#ba1a1a";
                 return (
                   <article
                     key={`${diversion.from_road}-${index}`}
-                    className={`border-l-4 p-3 ${
-                      isSuccess
-                        ? "border-green-500 bg-green-500/10 text-green-100"
-                        : "border-red-500 bg-red-500/10 text-red-100"
-                    }`}
-                    style={{ borderLeftColor: color }}
+                    className="card-organic overflow-hidden p-0 transition-shadow duration-200 hover:shadow-ambient-lg"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
-                      <strong className="text-sm">From: {diversion.from_road || "Local Street"}</strong>
+                    <div className="h-1" style={{ background: `linear-gradient(90deg, ${color}, transparent)` }}></div>
+                    <div className="flex items-center gap-3 p-4">
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: color }}
+                      />
+                      <div>
+                        <strong className="text-sm font-semibold text-on-surface">{diversion.from_road || "Local Street"}</strong>
+                        <p className="mt-0.5 text-[0.6875rem] font-medium" style={{ color: isSuccess ? "#006e1c" : "#ba1a1a" }}>
+                          {isSuccess ? "Corridor Flank Engaged" : "Local Gridlock (No Path)"}
+                        </p>
+                      </div>
                     </div>
-                    <p className="mt-1 text-xs font-semibold">
-                      {isSuccess ? "Corridor Flank Engaged" : "Local Gridlock (No Path)"}
-                    </p>
                   </article>
                 );
               })}
