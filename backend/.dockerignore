@@ -1,0 +1,6 @@
+Data/
+model_artifacts/
+processed_data.csv
+__pycache__/
+*.pyc
+.env

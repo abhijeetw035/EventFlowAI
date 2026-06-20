@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/Data:/app/Data
+      - ./backend/model_artifacts:/app/model_artifacts
+    networks:
+      - eventflow-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - eventflow-net
+
+networks:
+  eventflow-net:
+    driver: bridge
