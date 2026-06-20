@@ -199,6 +199,7 @@ export default function MapView({
   routeEnd,
   routeResult,
   onRoutePlanClick,
+  selectedPathIndex,
 }) {
   const successfulDiversions =
     diversionResult?.diversions?.filter(
@@ -263,25 +264,46 @@ export default function MapView({
         />
       )}
 
-      {/* Cluster diversion polylines */}
-      {successfulDiversions.map((diversion, index) => (
-          <Fragment key={`${diversion.from_road}-${index}`}>
-            <Polyline
-              positions={diversion.coordinates}
-              pathOptions={{ color: "#ffffff", weight: 10, opacity: 0.9 }}
-            />
-            <Polyline
-              positions={diversion.coordinates}
-              pathOptions={{
-                color: vectorColors[index % vectorColors.length],
-                weight: 5,
-                opacity: 0.9,
-                lineCap: "round",
-                lineJoin: "round",
-              }}
-            />
-          </Fragment>
-        ))}
+      {/* Cluster diversion polylines — selected path renders last so it sits on top */}
+      {(() => {
+        const anySelected = selectedPathIndex !== null && selectedPathIndex < successfulDiversions.length;
+        // Build render order: all non-selected first, then selected last
+        const order = successfulDiversions
+          .map((_, i) => i)
+          .filter((i) => i !== selectedPathIndex);
+        if (anySelected) {
+          order.push(selectedPathIndex);
+        }
+        return order.map((index) => {
+          const diversion = successfulDiversions[index];
+          const isSelected = index === selectedPathIndex;
+          // When something is selected: selected = full opacity, others = very faint
+          const lineOpacity = anySelected ? (isSelected ? 1 : 0.18) : 0.9;
+          const glowOpacity = anySelected ? (isSelected ? 0.9 : 0.15) : 0.9;
+          return (
+            <Fragment key={`${diversion.from_road}-${index}`}>
+              <Polyline
+                positions={diversion.coordinates}
+                pathOptions={{
+                  color: "#ffffff",
+                  weight: isSelected ? 14 : 10,
+                  opacity: glowOpacity,
+                }}
+              />
+              <Polyline
+                positions={diversion.coordinates}
+                pathOptions={{
+                  color: vectorColors[index % vectorColors.length],
+                  weight: isSelected ? 7 : 5,
+                  opacity: lineOpacity,
+                  lineCap: "round",
+                  lineJoin: "round",
+                }}
+              />
+            </Fragment>
+          );
+        });
+      })()}
 
       <FitDiversions target={selectedTarget} diversions={successfulDiversions} radiusKm={radiusKm} />
 

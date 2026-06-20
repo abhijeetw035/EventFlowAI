@@ -2,7 +2,7 @@ import DeploymentPanel from "./DeploymentPanel.jsx";
 
 const vectorColors = ["#006e1c", "#0061a4", "#8b5000", "#6750a4", "#006a6a", "#ba1a1a"];
 
-export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, routeResult, error }) {
+export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, routeResult, error, selectedPathIndex, onSelectPath }) {
   const diversions = diversionResult?.diversions || [];
 
   return (
@@ -116,10 +116,13 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
               {diversions.map((diversion, index) => {
                 const isSuccess = diversion.status === "success";
                 const color = isSuccess ? vectorColors[index % vectorColors.length] : "#ba1a1a";
+                const isSelected = selectedPathIndex === index;
                 return (
                   <article
                     key={`${diversion.from_road}-${index}`}
-                    className="card-organic overflow-hidden p-0 transition-shadow duration-200 hover:shadow-ambient-lg"
+                    onClick={() => onSelectPath(isSelected ? null : index)}
+                    className="card-organic overflow-hidden p-0 transition-all duration-200 hover:shadow-ambient-lg cursor-pointer"
+                    style={isSelected ? { outline: `2px solid ${color}`, outlineOffset: "2px" } : {}}
                   >
                     <div className="h-1" style={{ background: `linear-gradient(90deg, ${color}, transparent)` }}></div>
                     <div className="flex items-center gap-3 p-4">
@@ -127,12 +130,17 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
                         className="h-3 w-3 shrink-0 rounded-full"
                         style={{ backgroundColor: color }}
                       />
-                      <div>
+                      <div className="flex-1">
                         <strong className="text-sm font-semibold text-on-surface">{diversion.from_road || "Local Street"}</strong>
                         <p className="mt-0.5 text-[0.6875rem] font-medium" style={{ color: isSuccess ? "#006e1c" : "#ba1a1a" }}>
                           {isSuccess ? "Corridor Flank Engaged" : "Local Gridlock (No Path)"}
                         </p>
                       </div>
+                      {isSelected && (
+                        <span className="ml-auto text-[0.625rem] font-bold uppercase tracking-wider" style={{ color }}>
+                          Active
+                        </span>
+                      )}
                     </div>
                   </article>
                 );

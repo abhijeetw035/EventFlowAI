@@ -184,6 +184,7 @@ export default function App() {
   const [form, setForm] = useState(defaultForm);
   const [temporaryIncident, setTemporaryIncident] = useState(null);
   const [submittingForm, setSubmittingForm] = useState(false);
+  const [selectedPathIndex, setSelectedPathIndex] = useState(null);
 
   // --- Point-to-Point Route Planner State ---
   const [routeMode, setRouteMode] = useState(false);
@@ -249,6 +250,7 @@ export default function App() {
 
     setSelectedTarget({ lat, lon });
     setClusterCount(clusterPayload.length);
+    setSelectedPathIndex(null);
     setStatus(`Scanning nearby incidents and computing local macro-flanks for ${incident.id || "manual incident"}...`);
     const response = await calculateClusterDiversion({
       target: { lat, lon },
@@ -324,6 +326,7 @@ export default function App() {
     setSelectedName("Manual Incident");
     try {
       await Promise.all([runDiversion(manualIncident, localClusterFor(manualIncident.latitude, manualIncident.longitude)), runDeployment(manualIncident)]);
+      setForm(defaultForm);
     } catch (err) {
       setError(`Manual incident failed: ${err.message}`);
       setStatus("");
@@ -482,6 +485,7 @@ export default function App() {
             routeEnd={routeEnd}
             routeResult={routeResult}
             onRoutePlanClick={handleRoutePlanClick}
+            selectedPathIndex={selectedPathIndex}
           />
           <div className="map-edge-fade" />
         </main>
@@ -495,6 +499,8 @@ export default function App() {
           deploymentResult={deploymentResult}
           routeResult={routeResult}
           error={error}
+          selectedPathIndex={selectedPathIndex}
+          onSelectPath={setSelectedPathIndex}
         />
       </div>
     </div>
