@@ -23,6 +23,15 @@ const tempIcon = L.divIcon({
   iconAnchor: [9, 9],
 });
 
+const plannedEventIcon = L.divIcon({
+  html: `<div style="position:relative;width:20px;height:20px;">
+    <div style="background:#ba1a1a;width:20px;height:20px;border-radius:50%;border:2.5px dashed #ffffff;box-shadow:0 2px 10px rgba(186,26,26,0.5);"></div>
+  </div>`,
+  className: "",
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+});
+
 function makePointIcon(label, color) {
   return L.divIcon({
     html: `<div style="background:${color};color:white;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;font-family:'Manrope',sans-serif;border:3px solid white;box-shadow:0 4px 14px rgba(0,0,0,0.15);">${label}</div>`,
@@ -137,6 +146,7 @@ function IncidentMarker({
   lon,
   onCalculateDiversion,
   onRecommendDeployment,
+  onFindSimilarEvents,
 }) {
   const map = useMap();
 
@@ -161,20 +171,29 @@ function IncidentMarker({
               {incident.parsedStart ? new Date(incident.parsedStart).toLocaleString() : "New report"}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => runAfterClosingPopup(onCalculateDiversion)}
+                className="btn-press rounded-xl bg-primary px-3 py-2.5 text-[0.6875rem] font-bold text-on-primary shadow-ambient-sm transition-all hover:shadow-ambient"
+              >
+                Macro-Flanks
+              </button>
+              <button
+                type="button"
+                onClick={() => runAfterClosingPopup(onRecommendDeployment)}
+                className="btn-press rounded-xl bg-surface-container-high px-3 py-2.5 text-[0.6875rem] font-bold text-on-surface transition-all hover:bg-surface-container-highest"
+              >
+                Deployment
+              </button>
+            </div>
             <button
               type="button"
-              onClick={() => runAfterClosingPopup(onCalculateDiversion)}
-              className="btn-press rounded-xl bg-primary px-3 py-2.5 text-[0.6875rem] font-bold text-on-primary shadow-ambient-sm transition-all hover:shadow-ambient"
+              onClick={() => runAfterClosingPopup(onFindSimilarEvents)}
+              className="btn-press w-full rounded-xl bg-secondary px-3 py-2 text-[0.6875rem] font-bold text-on-secondary shadow-ambient-sm transition-all hover:shadow-ambient"
             >
-              Macro-Flanks
-            </button>
-            <button
-              type="button"
-              onClick={() => runAfterClosingPopup(onRecommendDeployment)}
-              className="btn-press rounded-xl bg-surface-container-high px-3 py-2.5 text-[0.6875rem] font-bold text-on-surface transition-all hover:bg-surface-container-highest"
-            >
-              Deployment
+              Find Similar Past Events
             </button>
           </div>
         </div>
@@ -186,6 +205,7 @@ function IncidentMarker({
 export default function MapView({
   incidents,
   temporaryIncident,
+  plannedEventTarget,
   selectedTarget,
   radiusKm,
   diversionResult,
@@ -193,6 +213,7 @@ export default function MapView({
   onMapClick,
   onCalculateDiversion,
   onRecommendDeployment,
+  onFindSimilarEvents,
   // Route planner props
   routeMode,
   routeStart,
@@ -251,9 +272,18 @@ export default function MapView({
             lon={lon}
             onCalculateDiversion={onCalculateDiversion}
             onRecommendDeployment={onRecommendDeployment}
+            onFindSimilarEvents={onFindSimilarEvents}
           />
         );
       })}
+
+      {/* Planned event dashed marker */}
+      {plannedEventTarget && (
+        <Marker
+          position={[plannedEventTarget.lat, plannedEventTarget.lon]}
+          icon={plannedEventIcon}
+        />
+      )}
 
       {/* Cluster radius circle drawn around the selected diversion target */}
       {selectedTarget && (

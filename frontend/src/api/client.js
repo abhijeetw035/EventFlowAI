@@ -61,3 +61,17 @@ export function getAnalyticsSummary(startDate, endDate) {
   if (endDate) params.append("end_date", endDate);
   return request(`/analytics-summary?${params.toString()}`);
 }
+
+export function findSimilarIncidents(payload) {
+  return request("/similar-incidents", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function planEvent(payload) {
+  return request("/plan-event", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

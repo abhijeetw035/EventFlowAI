@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { calculateClusterDiversion, calculateRouteDiversion, getDataset, predictDeployment, predictDeploymentCluster } from "./api/client.js";
+import { calculateClusterDiversion, calculateRouteDiversion, getDataset, predictDeployment, predictDeploymentCluster, findSimilarIncidents, planEvent } from "./api/client.js";
 import DiversionResultsPanel from "./components/DiversionResultsPanel.jsx";
 import IncidentForm from "./components/IncidentForm.jsx";
+import PlanEventForm from "./components/PlanEventForm.jsx";
 import MapView from "./components/MapView.jsx";
 import RadiusSlider from "./components/RadiusSlider.jsx";
 import RoutePlannerPanel from "./components/RoutePlannerPanel.jsx";
@@ -16,6 +17,18 @@ const defaultForm = {
   priority: "unknown",
   veh_type: "unknown",
   requires_road_closure: false,
+  corridor: "unknown",
+  junction: "unknown",
+  zone: "unknown",
+  description: "",
+};
+
+const defaultPlanEventForm = {
+  lat: "",
+  lon: "",
+  event_type: "festival",
+  expected_duration_hours: "",
+  planned_date_time: "",
   corridor: "unknown",
   junction: "unknown",
   zone: "unknown",
@@ -182,11 +195,19 @@ export default function App() {
   const [clusterCount, setClusterCount] = useState(0);
   const [diversionResult, setDiversionResult] = useState(null);
   const [deploymentResult, setDeploymentResult] = useState(null);
+  const [similarEventsResult, setSimilarEventsResult] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [temporaryIncident, setTemporaryIncident] = useState(null);
   const [submittingForm, setSubmittingForm] = useState(false);
   const [selectedPathIndex, setSelectedPathIndex] = useState(null);
+  
+  // Planned event state
+  const [planEventOpen, setPlanEventOpen] = useState(false);
+  const [planEventForm, setPlanEventForm] = useState(defaultPlanEventForm);
+  const [plannedEventResult, setPlannedEventResult] = useState(null);
+  const [plannedEventTarget, setPlannedEventTarget] = useState(null);
+  const [submittingPlanEvent, setSubmittingPlanEvent] = useState(false);
 
   // --- Point-to-Point Route Planner State ---
   const [routeMode, setRouteMode] = useState(false);
@@ -311,13 +332,41 @@ export default function App() {
     }
   }
 
+  async function handleFindSimilarEvents(incident) {
+    setError("");
+    setSelectedName(incident.id || "Manual Incident");
+    setStatus(`Finding similar past events for ${incident.id || "manual incident"}...`);
+    setSimilarEventsResult(null);
+    try {
+      const payload = deploymentPayloadFromIncident(incident);
+      const result = await findSimilarIncidents({
+        description: payload.description,
+        event_cause: payload.event_cause,
+        event_type: payload.event_type,
+        lat: payload.lat,
+        lon: payload.lon
+      });
+      setSimilarEventsResult(result);
+      setStatus("");
+    } catch (err) {
+      setError(`Failed to find similar events: ${err.message}`);
+      setStatus("");
+    }
+  }
+
   function handleMapClick(point) {
     setForm((current) => ({ ...current, lat: point.lat.toFixed(6), lon: point.lon.toFixed(6) }));
+    setPlanEventForm((current) => ({ ...current, lat: point.lat.toFixed(6), lon: point.lon.toFixed(6) }));
   }
 
   function handleFormChange(event) {
     const { name, value, type, checked } = event.target;
     setForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
+  }
+
+  function handlePlanEventFormChange(event) {
+    const { name, value } = event.target;
+    setPlanEventForm((current) => ({ ...current, [name]: value }));
   }
 
   async function handleFormSubmit(event) {
@@ -349,6 +398,44 @@ export default function App() {
       setStatus("");
     } finally {
       setSubmittingForm(false);
+    }
+  }
+
+  async function handlePlanEventSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setSubmittingPlanEvent(true);
+    setPlannedEventResult(null);
+    setPlannedEventTarget(null);
+
+    const lat = Number(planEventForm.lat);
+    const lon = Number(planEventForm.lon);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      setError("Planned event requires valid latitude and longitude.");
+      setSubmittingPlanEvent(false);
+      return;
+    }
+    
+    setSelectedName("Planned Event");
+    setStatus("Calculating risk index and deployment lead time...");
+
+    try {
+      const result = await planEvent({
+        ...planEventForm,
+        lat,
+        lon,
+        expected_duration_hours: Number(planEventForm.expected_duration_hours) || 4.0,
+      });
+      setPlannedEventResult(result);
+      setPlannedEventTarget({ lat, lon });
+      setPlanEventForm(defaultPlanEventForm);
+      setStatus("");
+    } catch (err) {
+      setError(`Planned event analysis failed: ${err.message}`);
+      setStatus("");
+    } finally {
+      setSubmittingPlanEvent(false);
     }
   }
 
@@ -504,6 +591,15 @@ export default function App() {
               mapPoint={form.lat && form.lon ? { lat: Number(form.lat), lon: Number(form.lon) } : null}
               submitting={submittingForm}
             />
+            <PlanEventForm
+              open={planEventOpen}
+              onToggle={() => setPlanEventOpen((value) => !value)}
+              form={planEventForm}
+              onChange={handlePlanEventFormChange}
+              onSubmit={handlePlanEventSubmit}
+              mapPoint={planEventForm.lat && planEventForm.lon ? { lat: Number(planEventForm.lat), lon: Number(planEventForm.lon) } : null}
+              submitting={submittingPlanEvent}
+            />
           </div>
         </aside>
 
@@ -512,6 +608,7 @@ export default function App() {
           <MapView
             incidents={activeIncidents}
             temporaryIncident={temporaryIncident}
+            plannedEventTarget={plannedEventTarget}
             selectedTarget={selectedTarget}
             radiusKm={radiusKm}
             diversionResult={diversionResult}
@@ -519,6 +616,7 @@ export default function App() {
             onMapClick={handleMapClick}
             onCalculateDiversion={handleCalculateDiversion}
             onRecommendDeployment={handleRecommendDeployment}
+            onFindSimilarEvents={handleFindSimilarEvents}
             routeMode={routeMode}
             routeStart={routeStart}
             routeEnd={routeEnd}
@@ -536,6 +634,8 @@ export default function App() {
           clusterCount={clusterCount}
           diversionResult={diversionResult}
           deploymentResult={deploymentResult}
+          similarEventsResult={similarEventsResult}
+          plannedEventResult={plannedEventResult}
           routeResult={routeResult}
           error={error}
           selectedPathIndex={selectedPathIndex}
