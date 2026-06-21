@@ -17,7 +17,7 @@ const tierConfig = {
   },
 };
 
-export default function DeploymentPanel({ recommendation }) {
+export default function DeploymentPanel({ recommendation, patrolRouteResult, isGeneratingPatrol, onGeneratePatrolRoute, onClear, onClearPatrolRoute }) {
   if (!recommendation) return null;
 
   // Fallback if recommendation is still old format
@@ -30,7 +30,7 @@ export default function DeploymentPanel({ recommendation }) {
   const tierCluster = cluster ? (tierConfig[cluster.tier_max] || tierConfig.Low) : null;
 
   return (
-    <article className="card-organic animate-fadeIn overflow-hidden p-0">
+    <article className="card-organic animate-fadeIn overflow-hidden p-0 relative">
       {/* Top gradient bar */}
       <div className="h-1.5 bg-gradient-to-r from-primary via-secondary to-tertiary"></div>
 
@@ -39,10 +39,22 @@ export default function DeploymentPanel({ recommendation }) {
           <div>
             <h3 className="font-display text-base font-bold text-on-surface">Deployment Recommendation</h3>
             <p className="mt-1 text-xs text-on-surface-var">
-              Radius <span className="font-display font-bold text-on-surface">{Number(single.affected_radius_km || 0).toFixed(2)} km</span> · Cluster{" "}
+              Impact Radius <span className="font-display font-bold text-on-surface">{Number(single.affected_radius_km || 0).toFixed(2)} km</span> · Cluster{" "}
               <span className="font-display font-bold text-on-surface">{single.location_cluster}</span>
             </p>
           </div>
+          {onClear && (
+            <button
+              onClick={onClear}
+              className="mt-1 rounded text-on-surface-var hover:bg-surface-container hover:text-on-surface p-1 transition-colors"
+              title="Clear Deployment Recommendation"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          )}
           <span className={`rounded-full px-3.5 py-1.5 text-[0.6875rem] font-bold ${tierSingle.bg} ${tierSingle.text}`}>
             {single.deployment_tier}
           </span>
@@ -93,6 +105,54 @@ export default function DeploymentPanel({ recommendation }) {
             <p className="mt-3 text-xs text-on-surface-var text-center">
               Aggregated across <span className="font-semibold text-on-surface">{cluster.incident_count}</span> active incidents within <span className="font-semibold text-on-surface">{cluster.radius_km} km</span>.
             </p>
+            <div className="mt-4 flex flex-col gap-3">
+              {cluster.incident_count > 1 ? (
+                <button
+                  onClick={onGeneratePatrolRoute}
+                  disabled={isGeneratingPatrol}
+                  className="btn-press flex items-center justify-center gap-2 rounded-xl bg-tertiary-container/50 px-4 py-2.5 text-[0.6875rem] font-bold uppercase tracking-wider text-tertiary hover:bg-tertiary-container transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingPatrol ? (
+                    <>
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <circle cx="12" cy="12" r="10" opacity="0.2"/>
+                        <path d="M12 2a10 10 0 0 1 10 10"/>
+                      </svg>
+                      Optimizing Route...
+                    </>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+                      </svg>
+                      Generate Patrol Route
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="flex items-center justify-center rounded-xl border border-dashed border-surface-container-high p-3 text-center">
+                  <span className="text-[0.6875rem] font-semibold text-on-surface-var">Only one active incident in this radius — no route needed</span>
+                </div>
+              )}
+
+              {patrolRouteResult && patrolRouteResult.status === "success" && (
+                <div className="flex animate-fadeIn flex-col gap-2 rounded-xl bg-surface-container-low p-3 shadow-inner relative">
+                  {onClearPatrolRoute && (
+                    <button onClick={onClearPatrolRoute} className="absolute right-2 top-2 rounded p-1 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors" title="Clear Patrol Route">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  )}
+                  <div className="flex items-center justify-between text-[0.625rem] font-semibold uppercase tracking-wider text-on-surface-var pr-6">
+                    <span>Route Distance</span>
+                    <span className="text-on-surface">{(patrolRouteResult.total_distance_m / 1000).toFixed(1)} km</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[0.625rem] font-semibold uppercase tracking-wider text-on-surface-var">
+                    <span>Estimated Travel Time</span>
+                    <span className="text-on-surface font-bold text-primary">{Math.ceil(patrolRouteResult.total_travel_time_s / 60)} min</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -124,11 +184,6 @@ export default function DeploymentPanel({ recommendation }) {
           </section>
         )}
 
-        {single.label_basis && (
-          <p className="mt-4 card-nested rounded-xl px-4 py-3 text-xs italic leading-relaxed text-on-surface-var">
-            {single.label_basis}
-          </p>
-        )}
       </div>
     </article>
   );
