@@ -315,6 +315,93 @@ def calculate_route_diversion(req: RouteDiversionRequest):
     return result
 
 
+@app.get("/audit-logs")
+def get_audit_logs(
+    event_type: str = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """
+    Returns paginated audit log rows from Supabase for the dashboard.
+    Optionally filter by event_type.
+    """
+    from audit_logger import _build_client, _SUPABASE_AVAILABLE
+    if not _SUPABASE_AVAILABLE:
+        return {"status": "error", "message": "Supabase not configured", "data": [], "total": 0}
+
+    client = _build_client()
+    if client is None:
+        return {"status": "error", "message": "Supabase unavailable", "data": [], "total": 0}
+
+    try:
+        query = client.table("audit_logs").select("*", count="exact").order("created_at", desc=True)
+        if event_type:
+            query = query.eq("event_type", event_type)
+        query = query.range(offset, offset + limit - 1)
+        response = query.execute()
+        return {
+            "status": "success",
+            "data": response.data,
+            "total": response.count if response.count is not None else len(response.data),
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc), "data": [], "total": 0}
+
+
+@app.get("/audit-logs/stats")
+def get_audit_stats():
+    """
+    Returns aggregate stats for the audit dashboard:
+    total counts per event_type and average response times.
+    """
+    from audit_logger import _build_client, _SUPABASE_AVAILABLE
+    if not _SUPABASE_AVAILABLE:
+        return {"status": "error", "counts": {}, "avg_response_ms": {}}
+
+    client = _build_client()
+    if client is None:
+        return {"status": "error", "counts": {}, "avg_response_ms": {}}
+
+    try:
+        response = client.table("audit_logs").select("event_type, payload").execute()
+        rows = response.data or []
+
+        import json as _json
+        from collections import defaultdict
+
+        counts: dict = defaultdict(int)
+        response_sums: dict = defaultdict(float)
+        response_counts: dict = defaultdict(int)
+
+        for row in rows:
+            et = row.get("event_type", "unknown")
+            counts[et] += 1
+            payload = row.get("payload", {})
+            if isinstance(payload, str):
+                try:
+                    payload = _json.loads(payload)
+                except Exception:
+                    payload = {}
+            ms = payload.get("response_time_ms")
+            if isinstance(ms, (int, float)):
+                response_sums[et] += ms
+                response_counts[et] += 1
+
+        avg_ms = {
+            et: round(response_sums[et] / response_counts[et])
+            for et in response_counts
+        }
+
+        return {
+            "status": "success",
+            "total": len(rows),
+            "counts": dict(counts),
+            "avg_response_ms": avg_ms,
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc), "counts": {}, "avg_response_ms": {}}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "diversion_engine": "loaded", "deployment_models": "loaded"}
