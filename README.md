@@ -99,7 +99,7 @@ The system operates on a single FastAPI backend serving a React frontend, with a
 | **Analytics Dashboard** | <img src="assets/screenshots/analytics_dashboard.png" width="600" alt="Analytics Dashboard" /> |
 | **Audit Trail** | <img src="assets/screenshots/audit_trail.png" width="600" alt="Immutable Audit Trail Viewer" /> |
 
-*(Add screenshots of your dashboard to the `assets/screenshots/` folder to populate these placeholders)*
+
 
 </div>
 
@@ -392,5 +392,5 @@ Every API endpoint that performs a computation logs a structured audit record to
 ---
 
 <p align="center">
-  <strong>Built for Smart City Hackathons 🏙️</strong>
+  <strong>Built for Gridlock Hackathon 🏙️</strong>
 </p>
