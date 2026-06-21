@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
 
+import time
 import joblib
 import pandas as pd
 import numpy as np
@@ -29,6 +30,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from audit_logger import audit_logger
 from inference_features import DeploymentFeatureBuilder
 
 router = APIRouter()
@@ -177,6 +179,7 @@ def predict_deployment(req: DeploymentRequest) -> DeploymentResponse:
     if _builder is None:
         raise HTTPException(status_code=503, detail="Deployment models not loaded yet. Call load_models() at startup.")
 
+    t0 = time.monotonic()
     try:
         frame, extras = _builder.build(req.model_dump())
         personnel = float(_personnel_model.predict(frame)[0])
@@ -185,9 +188,41 @@ def predict_deployment(req: DeploymentRequest) -> DeploymentResponse:
         tier = str(_tier_encoder.inverse_transform([tier_idx])[0])
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {exc}") from exc
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
 
     recommended_personnel = max(2, round(personnel))
     recommended_barricades = max(2, round(barricades))
+    explanation = build_explanation(req, extras, recommended_personnel, recommended_barricades)
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("deployment_prediction", {
+        # ── Inputs ──
+        "incident_id": req.incident_id,
+        "lat": req.lat,
+        "lon": req.lon,
+        "event_type": req.event_type,
+        "event_cause": req.event_cause,
+        "priority": req.priority,
+        "veh_type": req.veh_type,
+        "requires_road_closure": req.requires_road_closure,
+        "corridor": req.corridor,
+        "junction": req.junction,
+        "zone": req.zone,
+        "description": req.description,
+        "start_datetime": req.start_datetime,
+        # ── Model outputs ──
+        "recommended_personnel": recommended_personnel,
+        "recommended_barricades": recommended_barricades,
+        "deployment_tier": tier,
+        "severity_encoded": extras["severity_encoded"],
+        "affected_radius_km": extras["affected_radius"],
+        "is_major_corridor": bool(extras["is_major_corridor"]),
+        "location_cluster": extras["location_cluster"],
+        # ── Justification ──
+        "explanation": explanation,
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
 
     return DeploymentResponse(
         recommended_personnel=recommended_personnel,
@@ -197,7 +232,7 @@ def predict_deployment(req: DeploymentRequest) -> DeploymentResponse:
         affected_radius_km=extras["affected_radius"],
         is_major_corridor=bool(extras["is_major_corridor"]),
         location_cluster=extras["location_cluster"],
-        explanation=build_explanation(req, extras, recommended_personnel, recommended_barricades),
+        explanation=explanation,
     )
 
 

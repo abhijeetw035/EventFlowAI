@@ -34,8 +34,10 @@ from pydantic import BaseModel
 from typing import List
 import uvicorn
 
+import time
 import deployment_service
 import analytics_service
+from audit_logger import audit_logger
 
 # ==========================================
 # DATA MODELS
@@ -251,9 +253,30 @@ def get_dataset():
 @app.post("/calculate-cluster-diversion")
 def calculate_cluster_diversion(req: ClusterRequest):
     print(f"\n🚨 Computing Localized Macro-Diversion for cluster centered at [{req.target.lat}, {req.target.lon}]")
+    t0 = time.monotonic()
     manifest = engine.calculate_cluster_diversions(req.target.lat, req.target.lon, req.active_cluster)
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
+
+    success_count = len([m for m in manifest if m.get("status") == "success"])
+    gridlock_count = len([m for m in manifest if m.get("status") == "gridlock"])
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("diversion_query", {
+        "target_lat": req.target.lat,
+        "target_lon": req.target.lon,
+        "cluster_size": len(req.active_cluster),
+        "total_diversions_found": success_count,
+        "gridlock_count": gridlock_count,
+        "diversion_manifest": [
+            {"from_road": m.get("from_road"), "status": m.get("status")}
+            for m in manifest
+        ],
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
+
     return {
-        "total_diversions": len([m for m in manifest if m.get('status') == 'success']),
+        "total_diversions": success_count,
         "diversions": manifest
     }
 
@@ -267,11 +290,28 @@ def calculate_route_diversion(req: RouteDiversionRequest):
     avoids all of them.
     """
     print(f"\n🧭 Computing Point-to-Point Diversion: A=({req.start.lat}, {req.start.lon}) -> B=({req.end.lat}, {req.end.lon}) avoiding {len(req.blocking_incidents)} active incident(s)")
+    t0 = time.monotonic()
     result = engine.calculate_point_to_point_route(
         req.start.lat, req.start.lon,
         req.end.lat, req.end.lon,
         req.blocking_incidents
     )
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("route_query", {
+        "start_lat": req.start.lat,
+        "start_lon": req.start.lon,
+        "end_lat": req.end.lat,
+        "end_lon": req.end.lon,
+        "blocking_incidents_count": len(req.blocking_incidents),
+        "route_status": result.get("status"),
+        "severed_edges": result.get("severed_edges", 0),
+        "route_message": result.get("message", ""),
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
+
     return result
 
 

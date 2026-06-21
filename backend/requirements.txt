@@ -11,3 +11,4 @@ osmnx==2.0.1
 networkx==3.4.2
 holidays==0.63
 haversine==2.9.0
+supabase==2.16.0
