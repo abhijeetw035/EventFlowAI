@@ -8,6 +8,7 @@ import RadiusSlider from "./components/RadiusSlider.jsx";
 import RoutePlannerPanel from "./components/RoutePlannerPanel.jsx";
 import TimelineScrubber from "./components/TimelineScrubber.jsx";
 import AnalyticsPanel from "./components/AnalyticsPanel.jsx";
+import AuditDashboard from "./components/AuditDashboard.jsx";
 
 const defaultForm = {
   lat: "",
@@ -535,6 +536,12 @@ export default function App() {
           >
             Analytics Dashboard
           </button>
+          <button 
+            className={`px-6 py-2 rounded-full text-sm font-bold transition-colors ${currentView === 'audit' ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface hover:bg-surface-container'}`}
+            onClick={() => setCurrentView('audit')}
+          >
+            Audit Trail
+          </button>
         </div>
 
         {/* Live count chip */}
@@ -554,6 +561,10 @@ export default function App() {
       {currentView === 'analytics' ? (
         <div className="flex-1 w-full bg-surface overflow-hidden">
           <AnalyticsPanel startDate={minTime} endDate={selectedTime} />
+        </div>
+      ) : currentView === 'audit' ? (
+        <div className="flex-1 w-full overflow-hidden">
+          <AuditDashboard />
         </div>
       ) : (
         <div className="flex flex-1 min-h-0 flex-col lg:flex-row">

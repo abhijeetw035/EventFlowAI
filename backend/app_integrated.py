@@ -34,8 +34,10 @@ from pydantic import BaseModel
 from typing import List
 import uvicorn
 
+import time
 import deployment_service
 import analytics_service
+from audit_logger import audit_logger
 
 # ==========================================
 # DATA MODELS
@@ -251,9 +253,30 @@ def get_dataset():
 @app.post("/calculate-cluster-diversion")
 def calculate_cluster_diversion(req: ClusterRequest):
     print(f"\n🚨 Computing Localized Macro-Diversion for cluster centered at [{req.target.lat}, {req.target.lon}]")
+    t0 = time.monotonic()
     manifest = engine.calculate_cluster_diversions(req.target.lat, req.target.lon, req.active_cluster)
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
+
+    success_count = len([m for m in manifest if m.get("status") == "success"])
+    gridlock_count = len([m for m in manifest if m.get("status") == "gridlock"])
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("diversion_query", {
+        "target_lat": req.target.lat,
+        "target_lon": req.target.lon,
+        "cluster_size": len(req.active_cluster),
+        "total_diversions_found": success_count,
+        "gridlock_count": gridlock_count,
+        "diversion_manifest": [
+            {"from_road": m.get("from_road"), "status": m.get("status")}
+            for m in manifest
+        ],
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
+
     return {
-        "total_diversions": len([m for m in manifest if m.get('status') == 'success']),
+        "total_diversions": success_count,
         "diversions": manifest
     }
 
@@ -267,12 +290,116 @@ def calculate_route_diversion(req: RouteDiversionRequest):
     avoids all of them.
     """
     print(f"\n🧭 Computing Point-to-Point Diversion: A=({req.start.lat}, {req.start.lon}) -> B=({req.end.lat}, {req.end.lon}) avoiding {len(req.blocking_incidents)} active incident(s)")
+    t0 = time.monotonic()
     result = engine.calculate_point_to_point_route(
         req.start.lat, req.start.lon,
         req.end.lat, req.end.lon,
         req.blocking_incidents
     )
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("route_query", {
+        "start_lat": req.start.lat,
+        "start_lon": req.start.lon,
+        "end_lat": req.end.lat,
+        "end_lon": req.end.lon,
+        "blocking_incidents_count": len(req.blocking_incidents),
+        "route_status": result.get("status"),
+        "severed_edges": result.get("severed_edges", 0),
+        "route_message": result.get("message", ""),
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
+
     return result
+
+
+@app.get("/audit-logs")
+def get_audit_logs(
+    event_type: str = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """
+    Returns paginated audit log rows from Supabase for the dashboard.
+    Optionally filter by event_type.
+    """
+    from audit_logger import _build_client, _SUPABASE_AVAILABLE
+    if not _SUPABASE_AVAILABLE:
+        return {"status": "error", "message": "Supabase not configured", "data": [], "total": 0}
+
+    client = _build_client()
+    if client is None:
+        return {"status": "error", "message": "Supabase unavailable", "data": [], "total": 0}
+
+    try:
+        query = client.table("audit_logs").select("*", count="exact").order("created_at", desc=True)
+        if event_type:
+            query = query.eq("event_type", event_type)
+        query = query.range(offset, offset + limit - 1)
+        response = query.execute()
+        return {
+            "status": "success",
+            "data": response.data,
+            "total": response.count if response.count is not None else len(response.data),
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc), "data": [], "total": 0}
+
+
+@app.get("/audit-logs/stats")
+def get_audit_stats():
+    """
+    Returns aggregate stats for the audit dashboard:
+    total counts per event_type and average response times.
+    """
+    from audit_logger import _build_client, _SUPABASE_AVAILABLE
+    if not _SUPABASE_AVAILABLE:
+        return {"status": "error", "counts": {}, "avg_response_ms": {}}
+
+    client = _build_client()
+    if client is None:
+        return {"status": "error", "counts": {}, "avg_response_ms": {}}
+
+    try:
+        response = client.table("audit_logs").select("event_type, payload").execute()
+        rows = response.data or []
+
+        import json as _json
+        from collections import defaultdict
+
+        counts: dict = defaultdict(int)
+        response_sums: dict = defaultdict(float)
+        response_counts: dict = defaultdict(int)
+
+        for row in rows:
+            et = row.get("event_type", "unknown")
+            counts[et] += 1
+            payload = row.get("payload", {})
+            if isinstance(payload, str):
+                try:
+                    payload = _json.loads(payload)
+                except Exception:
+                    payload = {}
+            ms = payload.get("response_time_ms")
+            if isinstance(ms, (int, float)):
+                response_sums[et] += ms
+                response_counts[et] += 1
+
+        avg_ms = {
+            et: round(response_sums[et] / response_counts[et])
+            for et in response_counts
+        }
+
+        return {
+            "status": "success",
+            "total": len(rows),
+            "counts": dict(counts),
+            "avg_response_ms": avg_ms,
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc), "counts": {}, "avg_response_ms": {}}
 
 
 @app.get("/health")

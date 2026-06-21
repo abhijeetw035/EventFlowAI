@@ -75,3 +75,13 @@ export function planEvent(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function getAuditLogs({ eventType, limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams({ limit, offset });
+  if (eventType) params.append("event_type", eventType);
+  return request(`/audit-logs?${params.toString()}`);
+}
+
+export function getAuditStats() {
+  return request("/audit-logs/stats");
+}

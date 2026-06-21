@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
 
+import time
 import joblib
 import pandas as pd
 import numpy as np
@@ -29,6 +30,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from audit_logger import audit_logger
 from inference_features import DeploymentFeatureBuilder
 
 router = APIRouter()
@@ -177,6 +179,7 @@ def predict_deployment(req: DeploymentRequest) -> DeploymentResponse:
     if _builder is None:
         raise HTTPException(status_code=503, detail="Deployment models not loaded yet. Call load_models() at startup.")
 
+    t0 = time.monotonic()
     try:
         frame, extras = _builder.build(req.model_dump())
         personnel = float(_personnel_model.predict(frame)[0])
@@ -185,9 +188,41 @@ def predict_deployment(req: DeploymentRequest) -> DeploymentResponse:
         tier = str(_tier_encoder.inverse_transform([tier_idx])[0])
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {exc}") from exc
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
 
     recommended_personnel = max(2, round(personnel))
     recommended_barricades = max(2, round(barricades))
+    explanation = build_explanation(req, extras, recommended_personnel, recommended_barricades)
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("deployment_prediction", {
+        # ── Inputs ──
+        "incident_id": req.incident_id,
+        "lat": req.lat,
+        "lon": req.lon,
+        "event_type": req.event_type,
+        "event_cause": req.event_cause,
+        "priority": req.priority,
+        "veh_type": req.veh_type,
+        "requires_road_closure": req.requires_road_closure,
+        "corridor": req.corridor,
+        "junction": req.junction,
+        "zone": req.zone,
+        "description": req.description,
+        "start_datetime": req.start_datetime,
+        # ── Model outputs ──
+        "recommended_personnel": recommended_personnel,
+        "recommended_barricades": recommended_barricades,
+        "deployment_tier": tier,
+        "severity_encoded": extras["severity_encoded"],
+        "affected_radius_km": extras["affected_radius"],
+        "is_major_corridor": bool(extras["is_major_corridor"]),
+        "location_cluster": extras["location_cluster"],
+        # ── Justification ──
+        "explanation": explanation,
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
 
     return DeploymentResponse(
         recommended_personnel=recommended_personnel,
@@ -197,7 +232,7 @@ def predict_deployment(req: DeploymentRequest) -> DeploymentResponse:
         affected_radius_km=extras["affected_radius"],
         is_major_corridor=bool(extras["is_major_corridor"]),
         location_cluster=extras["location_cluster"],
-        explanation=build_explanation(req, extras, recommended_personnel, recommended_barricades),
+        explanation=explanation,
     )
 
 
@@ -383,6 +418,8 @@ def plan_event(req: PlanEventRequest) -> PlanEventResponse:
     if _builder is None:
         raise HTTPException(status_code=503, detail="Models not loaded")
 
+    t0 = time.monotonic()
+
     sim_req_dict = {
         "lat": req.lat,
         "lon": req.lon,
@@ -398,14 +435,14 @@ def plan_event(req: PlanEventRequest) -> PlanEventResponse:
         "start_datetime": req.planned_date_time,
         "expected_duration_minutes": req.expected_duration_hours * 60.0
     }
-    
+
     frame, extras = _builder.build(sim_req_dict)
-    
+
     personnel = max(2, round(float(_personnel_model.predict(frame)[0])))
     barricades = max(2, round(float(_barricade_model.predict(frame)[0])))
     tier_idx = _tier_model.predict(frame)[0]
     tier = str(_tier_encoder.inverse_transform([tier_idx])[0])
-    
+
     """
     pre_event_risk_index Formula:
     Base Risk is driven by the ML predicted deployment tier.
@@ -413,35 +450,66 @@ def plan_event(req: PlanEventRequest) -> PlanEventResponse:
     - Medium: 50
     - High: 75
     - Critical: 90
-    
+
     Location penalties (from historical entity lookup):
     - Frequency Penalty: Up to 10 points (safe_corridor_event_frequency normalized)
     - Severity Penalty: Up to 10 points (safe_corridor_avg_severity * 5)
-    
+
     Temporal constraints (derived from start_datetime):
     - Peak Hour Penalty: +10 points
     - Weekend Penalty: +5 points
     """
     tier_scores = {"Low": 20, "Medium": 50, "High": 75, "Critical": 90}
     base_risk = tier_scores.get(tier, 20)
-    
+
     peak_flag = frame["peak_hour_flag"].iloc[0]
     is_weekend = frame["is_weekend"].iloc[0]
     event_freq = frame["safe_corridor_event_frequency"].iloc[0]
     avg_sev = frame["safe_corridor_avg_severity"].iloc[0]
-    
+
     freq_penalty = min(10.0, (event_freq / 100.0) * 10.0)
     sev_penalty = min(10.0, avg_sev * 5.0)
-    
+
     temporal_penalty = 10 if peak_flag else (5 if is_weekend else 0)
-    
+
     risk_index = min(100.0, base_risk + freq_penalty + sev_penalty + temporal_penalty)
-    
+
     lead_time_map = {"Low": 1.0, "Medium": 2.0, "High": 4.0, "Critical": 12.0}
     lead_time = lead_time_map.get(tier, 1.0)
     if req.expected_duration_hours > 4:
         lead_time += 1.0
-        
+
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("plan_event_risk", {
+        # ── Inputs ──
+        "lat": req.lat,
+        "lon": req.lon,
+        "event_type": req.event_type,
+        "corridor": req.corridor,
+        "junction": req.junction,
+        "zone": req.zone,
+        "planned_date_time": req.planned_date_time,
+        "expected_duration_hours": req.expected_duration_hours,
+        "description": req.description,
+        # ── Model outputs ──
+        "pre_event_risk_index": round(risk_index, 1),
+        "recommended_personnel": personnel,
+        "recommended_barricades": barricades,
+        "deployment_tier": tier,
+        "deployment_lead_time_hours": lead_time,
+        # ── Risk breakdown ──
+        "base_risk": base_risk,
+        "freq_penalty": round(freq_penalty, 2),
+        "sev_penalty": round(sev_penalty, 2),
+        "temporal_penalty": temporal_penalty,
+        "peak_hour": bool(peak_flag),
+        "is_weekend": bool(is_weekend),
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
+
     return PlanEventResponse(
         pre_event_risk_index=round(risk_index, 1),
         recommended_personnel=personnel,
