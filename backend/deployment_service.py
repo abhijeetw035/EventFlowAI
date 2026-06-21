@@ -41,6 +41,7 @@ _tier_encoder = None
 
 
 class DeploymentRequest(BaseModel):
+    incident_id: str = Field(default="unknown", description="Unique ID for the incident")
     lat: float
     lon: float
     event_type: str = Field(default="unplanned", description="'planned' or 'unplanned'")
@@ -70,6 +71,27 @@ class DeploymentResponse(BaseModel):
         "(no historical ground-truth deployment records exist yet). "
         "Treat as a starting recommendation, not a measured fact."
     )
+
+
+class ClusterAreaResponse(BaseModel):
+    personnel_total: int
+    barricades_total: int
+    tier_max: str
+    incident_count: int
+    radius_km: float
+    label_basis: str
+    included_incident_ids: List[str]
+
+
+class ClusterDeploymentRequest(BaseModel):
+    target: DeploymentRequest
+    active_cluster: List[DeploymentRequest]
+    radius_km: float
+
+
+class ClusterDeploymentResponse(BaseModel):
+    single_point: DeploymentResponse
+    cluster_area: ClusterAreaResponse
 
 
 def load_models() -> None:
@@ -111,6 +133,66 @@ def predict_deployment(req: DeploymentRequest) -> DeploymentResponse:
         location_cluster=extras["location_cluster"],
         explanation=build_explanation(req, extras, recommended_personnel, recommended_barricades),
     )
+
+
+@router.post("/predict-deployment-cluster", response_model=ClusterDeploymentResponse)
+def predict_deployment_cluster(req: ClusterDeploymentRequest) -> ClusterDeploymentResponse:
+    if _builder is None:
+        raise HTTPException(status_code=503, detail="Deployment models not loaded yet. Call load_models() at startup.")
+
+    # Process the single target using the existing logic
+    single_point_resp = predict_deployment(req.target)
+
+    cluster_frames = []
+    included_ids = []
+
+    try:
+        import pandas as pd
+        for inc in req.active_cluster:
+            frame, _ = _builder.build(inc.model_dump())
+            cluster_frames.append(frame)
+            included_ids.append(inc.incident_id)
+
+        if not cluster_frames:
+            # Fallback if cluster is empty
+            cluster_area_resp = ClusterAreaResponse(
+                personnel_total=single_point_resp.recommended_personnel,
+                barricades_total=single_point_resp.recommended_barricades,
+                tier_max=single_point_resp.deployment_tier,
+                incident_count=1,
+                radius_km=req.radius_km,
+                label_basis=single_point_resp.label_basis,
+                included_incident_ids=[req.target.incident_id]
+            )
+        else:
+            batch_frame = pd.concat(cluster_frames, ignore_index=True)
+
+            personnel_preds = _personnel_model.predict(batch_frame)
+            barricade_preds = _barricade_model.predict(batch_frame)
+            tier_idxs = _tier_model.predict(batch_frame)
+
+            total_personnel = sum(max(2, round(float(p))) for p in personnel_preds)
+            total_barricades = sum(max(2, round(float(b))) for b in barricade_preds)
+
+            max_tier_idx = max(tier_idxs)
+            max_tier = str(_tier_encoder.inverse_transform([max_tier_idx])[0])
+
+            cluster_area_resp = ClusterAreaResponse(
+                personnel_total=total_personnel,
+                barricades_total=total_barricades,
+                tier_max=max_tier,
+                incident_count=len(req.active_cluster),
+                radius_km=req.radius_km,
+                label_basis=single_point_resp.label_basis,
+                included_incident_ids=included_ids
+            )
+
+        return ClusterDeploymentResponse(
+            single_point=single_point_resp,
+            cluster_area=cluster_area_resp
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cluster prediction failed: {exc}") from exc
 
 
 def build_explanation(req: DeploymentRequest, extras: dict, personnel: int, barricades: int) -> list[str]:
