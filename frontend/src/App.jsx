@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { calculateClusterDiversion, calculateRouteDiversion, getDataset, predictDeployment } from "./api/client.js";
+import { calculateClusterDiversion, calculateRouteDiversion, getDataset, predictDeployment, predictDeploymentCluster } from "./api/client.js";
 import DiversionResultsPanel from "./components/DiversionResultsPanel.jsx";
 import IncidentForm from "./components/IncidentForm.jsx";
 import MapView from "./components/MapView.jsx";
 import RadiusSlider from "./components/RadiusSlider.jsx";
 import RoutePlannerPanel from "./components/RoutePlannerPanel.jsx";
 import TimelineScrubber from "./components/TimelineScrubber.jsx";
+import AnalyticsPanel from "./components/AnalyticsPanel.jsx";
 
 const defaultForm = {
   lat: "",
@@ -125,6 +126,7 @@ function deploymentPayloadFromIncident(incident) {
   const description = readString(incident, ["description", "event_description", "details", "remarks"], eventCause);
 
   return {
+    incident_id: String(incident.id || incident.stableKey || "unknown"),
     lat,
     lon,
     event_type: readString(incident, ["event_type", "type"], "unplanned").toLowerCase().includes("planned")
@@ -195,6 +197,8 @@ export default function App() {
   const [routeStatus, setRouteStatus] = useState(
     'Click "Plan New Diversion Route", then click Point A and Point B on the map.'
   );
+  
+  const [currentView, setCurrentView] = useState("map");
 
   useEffect(() => {
     getDataset()
@@ -264,8 +268,21 @@ export default function App() {
 
   async function runDeployment(incident) {
     setStatus(`Requesting deployment recommendation for ${incident.id || "manual incident"}...`);
-    const result = await predictDeployment(deploymentPayloadFromIncident(incident));
+    const lat = Number(incident.latitude ?? incident.lat);
+    const lon = Number(incident.longitude ?? incident.lon);
+    
+    const clusterIncidents = localClusterFor(lat, lon);
+    const targetPayload = deploymentPayloadFromIncident(incident);
+    const clusterPayloads = clusterIncidents.map(deploymentPayloadFromIncident);
+
+    const result = await predictDeploymentCluster({
+      target: targetPayload,
+      active_cluster: clusterPayloads.length > 0 ? clusterPayloads : [targetPayload],
+      radius_km: radiusKm,
+    });
+
     setDeploymentResult(result);
+    setSelectedTarget({ lat, lon });
     setStatus("");
     return result;
   }
@@ -416,6 +433,23 @@ export default function App() {
             </p>
           </div>
         </div>
+
+        {/* Tab Switcher */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex bg-surface-container-highest rounded-full p-1 shadow-ambient-sm">
+          <button 
+            className={`px-6 py-2 rounded-full text-sm font-bold transition-colors ${currentView === 'map' ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface hover:bg-surface-container'}`}
+            onClick={() => setCurrentView('map')}
+          >
+            Operations Map
+          </button>
+          <button 
+            className={`px-6 py-2 rounded-full text-sm font-bold transition-colors ${currentView === 'analytics' ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface hover:bg-surface-container'}`}
+            onClick={() => setCurrentView('analytics')}
+          >
+            Analytics Dashboard
+          </button>
+        </div>
+
         {/* Live count chip */}
         <div className="flex items-center gap-2.5 rounded-full bg-surface-container-lowest px-4 py-2 shadow-ambient-sm">
           <span className="relative flex h-2 w-2">
@@ -429,10 +463,15 @@ export default function App() {
         </div>
       </header>
 
-      {/* ─── MAIN 3-COLUMN CONTENT ─── */}
-      <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
-        {/* ─── LEFT SIDEBAR ─── */}
-        <aside className="w-full bg-surface-container-low lg:w-[400px] shrink-0">
+      {/* ─── CONTENT ─── */}
+      {currentView === 'analytics' ? (
+        <div className="flex-1 w-full bg-surface overflow-hidden">
+          <AnalyticsPanel startDate={minTime} endDate={selectedTime} />
+        </div>
+      ) : (
+        <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
+          {/* ─── LEFT SIDEBAR ─── */}
+          <aside className="w-full bg-surface-container-low lg:w-[400px] shrink-0">
           <div className="h-full overflow-y-auto custom-scrollbar px-6 py-6 space-y-6">
             <TimelineScrubber
               minTime={minTime}
@@ -469,7 +508,7 @@ export default function App() {
         </aside>
 
         {/* ─── CENTER MAP ─── */}
-        <main className="relative flex-1 min-h-[520px] lg:min-h-0">
+        <main className="relative flex-1 min-h-[520px] lg:min-h-0 flex flex-col">
           <MapView
             incidents={activeIncidents}
             temporaryIncident={temporaryIncident}
@@ -503,6 +542,7 @@ export default function App() {
           onSelectPath={setSelectedPathIndex}
         />
       </div>
+      )}
     </div>
   );
 }

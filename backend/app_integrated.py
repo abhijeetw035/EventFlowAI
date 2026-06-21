@@ -35,6 +35,7 @@ from typing import List
 import uvicorn
 
 import deployment_service
+import analytics_service
 
 # ==========================================
 # DATA MODELS
@@ -233,6 +234,7 @@ engine = LocalDiversionEngine(12.9716, 77.5946, dist=12000)
 # Load the manpower/barricade models ONCE, at startup, alongside the graph engine.
 deployment_service.load_models()
 app.include_router(deployment_service.router)
+app.include_router(analytics_service.router)
 
 
 @app.get("/get-dataset")

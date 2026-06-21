@@ -47,3 +47,17 @@ export function predictDeployment(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function predictDeploymentCluster(payload) {
+  return request("/predict-deployment-cluster", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getAnalyticsSummary(startDate, endDate) {
+  const params = new URLSearchParams();
+  if (startDate) params.append("start_date", startDate);
+  if (endDate) params.append("end_date", endDate);
+  return request(`/analytics-summary?${params.toString()}`);
+}
