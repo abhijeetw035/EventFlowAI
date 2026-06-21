@@ -59,7 +59,7 @@ class ClusterRequest(BaseModel):
 class RouteDiversionRequest(BaseModel):
     start: Point
     end: Point
-    active_cluster: List[Point]
+    blocking_incidents: List[Point]
 
 class PatrolPoint(BaseModel):
     incident_id: str = "unknown"
