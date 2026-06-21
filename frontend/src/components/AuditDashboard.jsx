@@ -161,7 +161,7 @@ function PayloadDetail({ row }) {
       <Field label="Diversions Found" value={payload.total_diversions_found} accent="#006e1c" />
       <Field label="Gridlock Count" value={payload.gridlock_count} accent={payload.gridlock_count > 0 ? "#d32f2f" : undefined} />
       <Field label="Response Time" value={msLabel(payload.response_time_ms)} />
-      <Field label="Audit ID" value={payload.audit_id?.slice(0, 8) + "…"} mono />
+      <Field label="Audit ID" value={payload.audit_id} mono />
       {payload.diversion_manifest?.length > 0 && (
         <div style={{ gridColumn: "1/-1" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: "#72796f", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Diversion Manifest</div>
