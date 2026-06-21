@@ -418,6 +418,8 @@ def plan_event(req: PlanEventRequest) -> PlanEventResponse:
     if _builder is None:
         raise HTTPException(status_code=503, detail="Models not loaded")
 
+    t0 = time.monotonic()
+
     sim_req_dict = {
         "lat": req.lat,
         "lon": req.lon,
@@ -433,14 +435,14 @@ def plan_event(req: PlanEventRequest) -> PlanEventResponse:
         "start_datetime": req.planned_date_time,
         "expected_duration_minutes": req.expected_duration_hours * 60.0
     }
-    
+
     frame, extras = _builder.build(sim_req_dict)
-    
+
     personnel = max(2, round(float(_personnel_model.predict(frame)[0])))
     barricades = max(2, round(float(_barricade_model.predict(frame)[0])))
     tier_idx = _tier_model.predict(frame)[0]
     tier = str(_tier_encoder.inverse_transform([tier_idx])[0])
-    
+
     """
     pre_event_risk_index Formula:
     Base Risk is driven by the ML predicted deployment tier.
@@ -448,35 +450,66 @@ def plan_event(req: PlanEventRequest) -> PlanEventResponse:
     - Medium: 50
     - High: 75
     - Critical: 90
-    
+
     Location penalties (from historical entity lookup):
     - Frequency Penalty: Up to 10 points (safe_corridor_event_frequency normalized)
     - Severity Penalty: Up to 10 points (safe_corridor_avg_severity * 5)
-    
+
     Temporal constraints (derived from start_datetime):
     - Peak Hour Penalty: +10 points
     - Weekend Penalty: +5 points
     """
     tier_scores = {"Low": 20, "Medium": 50, "High": 75, "Critical": 90}
     base_risk = tier_scores.get(tier, 20)
-    
+
     peak_flag = frame["peak_hour_flag"].iloc[0]
     is_weekend = frame["is_weekend"].iloc[0]
     event_freq = frame["safe_corridor_event_frequency"].iloc[0]
     avg_sev = frame["safe_corridor_avg_severity"].iloc[0]
-    
+
     freq_penalty = min(10.0, (event_freq / 100.0) * 10.0)
     sev_penalty = min(10.0, avg_sev * 5.0)
-    
+
     temporal_penalty = 10 if peak_flag else (5 if is_weekend else 0)
-    
+
     risk_index = min(100.0, base_risk + freq_penalty + sev_penalty + temporal_penalty)
-    
+
     lead_time_map = {"Low": 1.0, "Medium": 2.0, "High": 4.0, "Critical": 12.0}
     lead_time = lead_time_map.get(tier, 1.0)
     if req.expected_duration_hours > 4:
         lead_time += 1.0
-        
+
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
+
+    # ── Immutable audit record ──────────────────────────────────────────
+    audit_logger.log("plan_event_risk", {
+        # ── Inputs ──
+        "lat": req.lat,
+        "lon": req.lon,
+        "event_type": req.event_type,
+        "corridor": req.corridor,
+        "junction": req.junction,
+        "zone": req.zone,
+        "planned_date_time": req.planned_date_time,
+        "expected_duration_hours": req.expected_duration_hours,
+        "description": req.description,
+        # ── Model outputs ──
+        "pre_event_risk_index": round(risk_index, 1),
+        "recommended_personnel": personnel,
+        "recommended_barricades": barricades,
+        "deployment_tier": tier,
+        "deployment_lead_time_hours": lead_time,
+        # ── Risk breakdown ──
+        "base_risk": base_risk,
+        "freq_penalty": round(freq_penalty, 2),
+        "sev_penalty": round(sev_penalty, 2),
+        "temporal_penalty": temporal_penalty,
+        "peak_hour": bool(peak_flag),
+        "is_weekend": bool(is_weekend),
+        "response_time_ms": elapsed_ms,
+    })
+    # ───────────────────────────────────────────────────────────────────
+
     return PlanEventResponse(
         pre_event_risk_index=round(risk_index, 1),
         recommended_personnel=personnel,
