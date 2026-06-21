@@ -13,6 +13,8 @@ services:
     volumes:
       - ./backend/Data:/app/Data
       - ./backend/model_artifacts:/app/model_artifacts
+      - ./backend/processed_data.csv:/app/processed_data.csv
+      - ./backend/feature_metadata.json:/app/feature_metadata.json
     networks:
       - eventflow-net
 
