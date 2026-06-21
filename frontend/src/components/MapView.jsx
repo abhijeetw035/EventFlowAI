@@ -41,6 +41,15 @@ function makePointIcon(label, color) {
   });
 }
 
+function makePatrolStopIcon(number) {
+  return L.divIcon({
+    html: `<div style="background:#ba1a1a;color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;font-family:'Manrope',sans-serif;border:2px solid white;box-shadow:0 4px 10px rgba(186,26,26,0.4); z-index: 1000;">${number}</div>`,
+    className: "",
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
+
 const pointAIcon = makePointIcon("A", "#006e1c");
 const pointBIcon = makePointIcon("B", "#8b5000");
 
@@ -219,6 +228,7 @@ export default function MapView({
   routeStart,
   routeEnd,
   routeResult,
+  patrolRouteResult,
   onRoutePlanClick,
   selectedPathIndex,
 }) {
@@ -235,11 +245,6 @@ export default function MapView({
     if (temporaryIncident) rows.push({ incident: temporaryIncident, temporary: true });
     return rows;
   }, [incidents, temporaryIncident]);
-
-  const routeCoords =
-    routeResult?.status === "success" && Array.isArray(routeResult.coordinates)
-      ? routeResult.coordinates
-      : null;
 
   return (
     <MapContainer center={[12.9716, 77.5946]} zoom={12} className="h-full">
@@ -352,22 +357,32 @@ export default function MapView({
       )}
 
       {/* Computed diversion route polyline */}
-      {routeCoords && (
+      {routeResult && routeResult.status === "success" && (
+        <Polyline
+          positions={routeResult.coordinates}
+          pathOptions={{ color: "#006e1c", weight: 6, opacity: 0.9, lineJoin: "round" }}
+        />
+      )}
+
+      {/* PATROL ROUTE RENDERING */}
+      {patrolRouteResult && patrolRouteResult.status === "success" && (
         <>
           <Polyline
-            positions={routeCoords}
-            pathOptions={{ color: "#ffffff", weight: 10, opacity: 0.9 }}
+            positions={patrolRouteResult.route_coordinates}
+            pathOptions={{ color: "#ba1a1a", weight: 5, opacity: 0.8, dashArray: "10, 10", lineJoin: "round" }}
           />
-          <Polyline
-            positions={routeCoords}
-            pathOptions={{
-              color: "#6750a4",
-              weight: 5,
-              opacity: 0.9,
-              lineCap: "round",
-              lineJoin: "round",
-            }}
-          />
+          {patrolRouteResult.ordered_incident_ids.map((id, index) => {
+            const incident = incidents.find(i => i.id === id) || (selectedTarget?.id === id ? selectedTarget : null);
+            if (!incident) return null;
+            return (
+              <Marker
+                key={`patrol-stop-${id}-${index}`}
+                position={[incident.latitude, incident.longitude]}
+                icon={makePatrolStopIcon(index + 1)}
+                zIndexOffset={1000}
+              />
+            );
+          })}
         </>
       )}
 

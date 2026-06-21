@@ -76,6 +76,13 @@ export function planEvent(payload) {
   });
 }
 
+export function optimizePatrolRoute(payload) {
+  return request("/optimize-patrol-route", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getAuditLogs({ eventType, limit = 50, offset = 0 } = {}) {
   const params = new URLSearchParams({ limit, offset });
   if (eventType) params.append("event_type", eventType);

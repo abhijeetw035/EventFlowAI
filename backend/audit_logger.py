@@ -44,6 +44,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+
 # Official Supabase Python client.
 # Falls back to a no-op if the package isn't installed so dev environments
 # without credentials can still run the backend.

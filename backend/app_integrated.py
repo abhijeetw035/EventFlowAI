@@ -31,7 +31,7 @@ import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import uvicorn
 
 import time
@@ -59,7 +59,16 @@ class ClusterRequest(BaseModel):
 class RouteDiversionRequest(BaseModel):
     start: Point
     end: Point
-    blocking_incidents: List[Point]
+    active_cluster: List[Point]
+
+class PatrolPoint(BaseModel):
+    incident_id: str = "unknown"
+    lat: float
+    lon: float
+
+class PatrolRouteRequest(BaseModel):
+    start_point: Optional[PatrolPoint] = None
+    active_cluster: List[PatrolPoint]
 
 
 # ==========================================
@@ -313,6 +322,125 @@ def calculate_route_diversion(req: RouteDiversionRequest):
     # ───────────────────────────────────────────────────────────────────
 
     return result
+
+@app.post("/optimize-patrol-route")
+def optimize_patrol_route(req: PatrolRouteRequest):
+    if not engine.original_G:
+        return {"status": "error", "message": "Graph not loaded."}
+        
+    t0 = time.monotonic()
+    
+    points = list(req.active_cluster)
+    if req.start_point:
+        existing = [p for p in points if p.incident_id == req.start_point.incident_id and p.lat == req.start_point.lat and p.lon == req.start_point.lon]
+        if not existing:
+            points.insert(0, req.start_point)
+        else:
+            points.remove(existing[0])
+            points.insert(0, existing[0])
+            
+    n = len(points)
+    print(f"\n🚓 Patrol Route Optimizer: Received {len(req.active_cluster)} active incidents in cluster. Total routing points (including start): {n}")
+    
+    if n <= 1:
+        print("   -> Singleton cluster detected. Returning trivial zero-distance route.")
+        return {
+            "status": "success", 
+            "route": [{"lat": p.lat, "lon": p.lon, "incident_id": p.incident_id} for p in points],
+            "total_time_min": 0.0,
+            "total_distance_km": 0.0
+        }
+
+    if n > 25:
+        print(f"   -> WARNING: Cluster size {n} exceeds safe TSP limit. Rejecting to prevent citywide compute.")
+        return {"status": "error", "message": f"Cluster size {n} is too large for patrol routing. Please reduce your search radius."}
+
+    nodes = []
+    for p in points:
+        try:
+            node = ox.nearest_nodes(engine.original_G, p.lon, p.lat)
+            nodes.append(node)
+        except Exception:
+            return {"status": "error", "message": f"Could not snap point {p.incident_id} to road network."}
+
+    matrix = {}
+    for i in range(n):
+        try:
+            lengths, paths = nx.single_source_dijkstra(engine.original_G, source=nodes[i], weight='travel_time')
+            for j in range(n):
+                if i == j:
+                    matrix[(i, j)] = (0.0, 0.0, [])
+                else:
+                    target = nodes[j]
+                    if target in lengths:
+                        path = paths[target]
+                        tt = lengths[target]
+                        dist = sum(min(e.get('length', 0) for e in engine.original_G[path[k]][path[k+1]].values()) for k in range(len(path)-1))
+                        matrix[(i, j)] = (tt, dist, path)
+                    else:
+                        matrix[(i, j)] = (float('inf'), float('inf'), [])
+        except Exception:
+            for j in range(n):
+                matrix[(i, j)] = (0.0, 0.0, []) if i == j else (float('inf'), float('inf'), [])
+
+    visited = [0]
+    unvisited = set(range(1, n))
+    while unvisited:
+        curr = visited[-1]
+        next_node = min(unvisited, key=lambda x: matrix[(curr, x)][0])
+        visited.append(next_node)
+        unvisited.remove(next_node)
+
+    improved = True
+    while improved:
+        improved = False
+        for i in range(1, n - 1):
+            for j in range(i + 1, n):
+                new_route = visited[:i] + visited[i:j+1][::-1] + visited[j+1:]
+                old_cost = sum(matrix[(visited[k], visited[k+1])][0] for k in range(n-1))
+                new_cost = sum(matrix[(new_route[k], new_route[k+1])][0] for k in range(n-1))
+                
+                if new_cost < old_cost:
+                    visited = new_route
+                    improved = True
+
+    total_time = 0.0
+    total_dist = 0.0
+    full_path_coords = []
+    
+    for k in range(n - 1):
+        i, j = visited[k], visited[k+1]
+        tt, dist, path = matrix[(i, j)]
+        if tt == float('inf'):
+            return {"status": "error", "message": "Graph is disconnected; cannot find full route."}
+            
+        total_time += tt
+        total_dist += dist
+        
+        coords = [[engine.original_G.nodes[node]['y'], engine.original_G.nodes[node]['x']] for node in path]
+        if k > 0 and len(coords) > 0:
+            coords = coords[1:]
+        full_path_coords.extend(coords)
+        
+    ordered_ids = [points[i].incident_id for i in visited]
+    
+    elapsed_ms = round((time.monotonic() - t0) * 1000)
+    
+    audit_logger.log("patrol_route_generated", {
+        "cluster_size": n,
+        "total_distance_m": total_dist,
+        "total_travel_time_s": total_time,
+        "response_time_ms": elapsed_ms
+    })
+    
+    return {
+        "status": "success",
+        "ordered_incident_ids": ordered_ids,
+        "route_coordinates": full_path_coords,
+        "total_distance_m": round(total_dist, 1),
+        "total_travel_time_s": round(total_time, 1),
+        "response_time_ms": elapsed_ms
+    }
 
 
 @app.get("/audit-logs")

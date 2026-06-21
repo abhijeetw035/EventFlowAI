@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { calculateClusterDiversion, calculateRouteDiversion, getDataset, predictDeployment, predictDeploymentCluster, findSimilarIncidents, planEvent } from "./api/client.js";
+import { calculateClusterDiversion, calculateRouteDiversion, getDataset, predictDeployment, predictDeploymentCluster, findSimilarIncidents, planEvent, optimizePatrolRoute } from "./api/client.js";
 import DiversionResultsPanel from "./components/DiversionResultsPanel.jsx";
 import IncidentForm from "./components/IncidentForm.jsx";
 import PlanEventForm from "./components/PlanEventForm.jsx";
@@ -63,13 +63,13 @@ function normalizeDataset(data) {
     })
     .filter(Boolean);
 
-  const stableHorizon = Number.isFinite(maxTime) ? maxTime : minTime;
+  const stableHorizon = Number.isFinite(maxTime) ? Math.min(maxTime, Date.now()) : Date.now();
   return {
     incidents: incidents.map((incident, index) => ({
       ...incident,
-      parsedEnd: Number.isFinite(incident.explicitEnd) ? incident.explicitEnd : stableHorizon,
+      parsedEnd: Number.isFinite(incident.explicitEnd) ? Math.min(incident.explicitEnd, Date.now()) : stableHorizon,
       stableKey: `${String(incident.id || incident.event_id || "incident")}-${index}`,
-    })),
+    })).filter(incident => incident.parsedStart <= Date.now()),
     minTime,
     maxTime: stableHorizon,
   };
@@ -220,6 +220,10 @@ export default function App() {
     'Click "Plan New Diversion Route", then click Point A and Point B on the map.'
   );
   
+  // --- Patrol Route Optimizer State ---
+  const [patrolRouteResult, setPatrolRouteResult] = useState(null);
+  const [isGeneratingPatrol, setIsGeneratingPatrol] = useState(false);
+
   const [currentView, setCurrentView] = useState("map");
 
   useEffect(() => {
@@ -440,6 +444,65 @@ export default function App() {
     }
   }
 
+  async function handleGeneratePatrolRoute() {
+    if (!selectedTarget || !activeIncidents.length) return;
+    setIsGeneratingPatrol(true);
+    setPatrolRouteResult(null);
+    
+    const startLat = Number(selectedTarget.latitude || selectedTarget.lat);
+    const startLon = Number(selectedTarget.longitude || selectedTarget.lon);
+    
+    // Use the shared helper to ONLY route within the selected search radius!
+    const clusterIncidents = localClusterFor(startLat, startLon);
+    
+    if (clusterIncidents.length <= 1) {
+      setIsGeneratingPatrol(false);
+      return;
+    }
+
+    // Convert to PatrolPoints
+    const activeCluster = clusterIncidents.map(i => ({
+      incident_id: i.id || i.incident_id || "unknown",
+      lat: Number(i.latitude || i.lat),
+      lon: Number(i.longitude || i.lon)
+    }));
+    
+    const startPoint = {
+      incident_id: selectedTarget.id || selectedTarget.incident_id || "unknown",
+      lat: startLat,
+      lon: startLon
+    };
+
+    try {
+      const res = await optimizePatrolRoute({ start_point: startPoint, active_cluster: activeCluster });
+      if (res.status === "error") {
+        setError(`Patrol generation failed: ${res.message}`);
+      } else {
+        setPatrolRouteResult(res);
+      }
+    } catch (err) {
+      setError(`Patrol generation failed: ${err.message}`);
+    } finally {
+      setIsGeneratingPatrol(false);
+    }
+  }
+
+  function handleClearAll() {
+    setDeploymentResult(null);
+    setDiversionResult(null);
+    setPatrolRouteResult(null);
+    setSimilarEventsResult(null);
+    setPlannedEventResult(null);
+    setRouteResult(null);
+    setRouteStart(null);
+    setRouteEnd(null);
+    setSelectedTarget(null);
+    setSelectedName("");
+    setTemporaryIncident(null);
+    setPlannedEventTarget(null);
+    clearRoute();
+  }
+
   function toggleRouteMode() {
     clearRoute();
     setRouteMode(true);
@@ -577,10 +640,9 @@ export default function App() {
               value={selectedTime}
               disabled={!allIncidents.length}
               onChange={(value) => {
-                setSelectedTime(value);
-                setDiversionResult(null);
-                setSelectedTarget(null);
-                clearRoute();
+                const clamped = Math.max(minTime, Math.min(value, maxTime));
+                setSelectedTime(clamped);
+                handleClearAll();
               }}
             />
             <RadiusSlider value={radiusKm} onChange={setRadiusKm} />
@@ -632,6 +694,13 @@ export default function App() {
             routeStart={routeStart}
             routeEnd={routeEnd}
             routeResult={routeResult}
+            patrolRouteResult={patrolRouteResult}
+            onTargetSelect={(incident) => {
+              if (!routeMode && !patrolRouteResult) {
+                handleCalculateDiversion(incident);
+                handleRecommendDeployment(incident);
+              }
+            }}
             onRoutePlanClick={handleRoutePlanClick}
             selectedPathIndex={selectedPathIndex}
           />
@@ -647,8 +716,19 @@ export default function App() {
           deploymentResult={deploymentResult}
           similarEventsResult={similarEventsResult}
           plannedEventResult={plannedEventResult}
+          patrolRouteResult={patrolRouteResult}
+          isGeneratingPatrol={isGeneratingPatrol}
+          onGeneratePatrolRoute={handleGeneratePatrolRoute}
           routeResult={routeResult}
+          routeMode={routeMode}
           error={error}
+          onClearAll={handleClearAll}
+          onClearDeployment={() => setDeploymentResult(null)}
+          onClearDiversion={() => setDiversionResult(null)}
+          onClearSimilarEvents={() => setSimilarEventsResult(null)}
+          onClearPlannedEvent={() => setPlannedEventResult(null)}
+          onClearPatrolRoute={() => setPatrolRouteResult(null)}
+          onClearPointToPoint={clearRoute}
           selectedPathIndex={selectedPathIndex}
           onSelectPath={setSelectedPathIndex}
         />
