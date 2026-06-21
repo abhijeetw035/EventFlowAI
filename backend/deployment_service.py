@@ -157,7 +157,13 @@ def load_models() -> None:
 
     print("Precomputing TF-IDF vectors for historical incidents (Similarity Search)...")
     try:
-        df = pd.read_csv("processed_data.csv")
+        # Try processed_data.csv first (available when the pipeline ran in this
+        # container session), fall back to deployment_dataset.csv which is
+        # always available via the model_artifacts volume mount.
+        csv_path = Path("processed_data.csv")
+        if not csv_path.is_file():
+            csv_path = ARTIFACTS_DIR / "deployment_dataset.csv"
+        df = pd.read_csv(csv_path)
         if "latitude" in df.columns and "lat" not in df.columns:
             df["lat"] = df["latitude"]
         if "longitude" in df.columns and "lon" not in df.columns:
@@ -169,7 +175,7 @@ def load_models() -> None:
         combined_texts = (df["description"].astype(str) + " " + df["event_cause"].astype(str)).str.lower().tolist()
         _historical_tfidf = _builder.tfidf_vectorizer.transform(combined_texts)
         _historical_rows = df.to_dict("records")
-        print(f"Cached {_historical_tfidf.shape[0]} historical incidents for similarity search.")
+        print(f"Cached {_historical_tfidf.shape[0]} historical incidents for similarity search (from {csv_path}).")
     except Exception as e:
         print(f"Warning: Failed to precompute similarity vectors: {e}")
 
