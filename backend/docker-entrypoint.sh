@@ -16,4 +16,4 @@ if [ ! -f model_artifacts/personnel_model.joblib ] \
     python train_deployment_models.py --artifacts-dir model_artifacts
 fi
 
-exec uvicorn app_integrated:app --host 0.0.0.0 --port 8000
+exec uvicorn app_integrated:app --host 0.0.0.0 --port ${PORT:-8000}
