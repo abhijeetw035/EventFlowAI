@@ -24,11 +24,10 @@
 - [Overview](#-overview)
 - [Core Capabilities](#-core-capabilities)
 - [Dashboard Modules](#-dashboard-modules)
+- [Architecture](#-architecture)
 - [Dashboard Previews](#-dashboard-previews)
 - [API Endpoints](#-api-endpoints)
-- [ML Pipeline](#-ml-pipeline)
 - [Tech Stack](#-tech-stack)
-- [Architecture](#-architecture)
 - [Getting Started](#-getting-started)
 - [Project Structure](#-project-structure)
 - [How It Works](#-how-it-works)
@@ -85,6 +84,9 @@ The system operates on a single FastAPI backend serving a React frontend, with a
 | 14 | **Error Boundary** | React error boundary with graceful fallback UI — prevents full-app crashes from individual component failures |
 
 ---
+## 🏗 Architecture
+
+<img src="assets/screenshots/architecture.png" width="600" alt="Project Architecture with several components" />
 
 ## 🖼 Dashboard Previews
 
@@ -173,54 +175,6 @@ The system operates on a single FastAPI backend serving a React frontend, with a
 | Docker Compose | Multi-container orchestration (backend + frontend/Nginx) |
 | Supabase (PostgreSQL) | Immutable audit log storage (JSONB payloads) |
 | OpenStreetMap | Road network source data for diversion routing |
-
----
-
-## 🏗 Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Docker Compose Network                       │
-│                                                                     │
-│  ┌───────────────────────┐       ┌────────────────────────────────┐ │
-│  │   Frontend Container  │       │      Backend Container         │ │
-│  │                       │       │                                │ │
-│  │  React 18 SPA (Vite)  │       │  FastAPI (Uvicorn :8000)       │ │
-│  │  ├─ Operations Map    │       │  ├─ Diversion API              │ │
-│  │  ├─ Timeline Scrubber │ Nginx │  ├─ Deployment API             │ │
-│  │  ├─ Route Planner     │──────▶│  ├─ Similarity API             │ │
-│  │  ├─ Incident Form     │ /api/*│  ├─ Patrol API                 │ │
-│  │  ├─ Analytics Dash    │       │  └─ Analytics API              │ │
-│  │  └─ Audit Trail       │       │                                │ │
-│  │                       │       │  ┌──────────────────────────┐  │ │
-│  │  Leaflet · Recharts   │       │  │  Graph Engine (in-mem)   │  │ │
-│  │  TailwindCSS          │       │  │  OSMnx + NetworkX        │  │ │
-│  └───────────────────────┘       │  │  12km Bengaluru road net │  │ │
-│         :5173                    │  └──────────────────────────┘  │ │
-│                                  │                                │ │
-│                                  │  ┌──────────────────────────┐  │ │
-│                                  │  │  ML Prediction Engine    │  │ │
-│                                  │  │  3× RandomForest models  │  │ │
-│                                  │  │  TF-IDF Similarity       │  │ │
-│                                  │  │  70+ engineered features │  │ │
-│                                  │  └──────────────────────────┘  │ │
-│                                  │                                │ │
-│                                  │  ┌──────────────────────────┐  │ │
-│                                  │  │  Audit Logger            │  │ │
-│                                  │  │  Fire-and-forget threads │──┼─┼──▶ Supabase
-│                                  │  └──────────────────────────┘  │ │   (PostgreSQL)
-│                                  └────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-                                    │
-              ┌─────────────────────┘
-              ▼
-   ┌─────────────────────┐      ┌──────────────────────────────┐
-   │   OpenStreetMap      │      │   ML Training Pipeline       │
-   │   Road Network API   │      │   preprocess.py              │
-   │   (one-time download │      │   prepare_deployment_dataset │
-   │    at startup)       │      │   train_deployment_models    │
-   └─────────────────────┘      └──────────────────────────────┘
-```
 
 ---
 
