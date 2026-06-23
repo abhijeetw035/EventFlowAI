@@ -563,7 +563,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface text-on-surface">
+    <div className="flex h-[100dvh] flex-col bg-surface text-on-surface overflow-hidden">
       {/* ─── HEADER ─── */}
       <header className="glass-organic sticky top-0 z-[9999] flex items-center justify-between px-8 py-4">
         <div className="flex items-center gap-4">
