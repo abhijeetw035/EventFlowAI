@@ -189,7 +189,7 @@ export default function App() {
   const [maxTime, setMaxTime] = useState(NaN);
   const [selectedTime, setSelectedTime] = useState(NaN);
   const [radiusKm, setRadiusKm] = useState(1.5);
-  const [status, setStatus] = useState("Loading dataset...");
+  const [status, setStatus] = useState("Loading Incidents...");
   const [error, setError] = useState("");
   const [selectedName, setSelectedName] = useState("");
   const [selectedTarget, setSelectedTarget] = useState(null);
@@ -227,20 +227,34 @@ export default function App() {
   const [currentView, setCurrentView] = useState("map");
 
   useEffect(() => {
-    getDataset()
-      .then((result) => {
-        if (result.status !== "success") throw new Error(result.message || "Dataset load failed.");
-        const normalized = normalizeDataset(result.data);
-        setAllIncidents(normalized.incidents);
-        setMinTime(normalized.minTime);
-        setMaxTime(normalized.maxTime);
-        setSelectedTime(normalized.maxTime);
-        setStatus(`Successfully loaded ${normalized.incidents.length} temporal incidents.`);
-      })
-      .catch((err) => {
-        setError(`Backend offline or dataset unavailable. ${err.message}`);
-        setStatus("");
-      });
+    let mounted = true;
+    const fetchDataset = () => {
+      getDataset()
+        .then((result) => {
+          if (!mounted) return;
+          if (result.status !== "success") throw new Error(result.message || "Dataset load failed.");
+          const normalized = normalizeDataset(result.data);
+          setAllIncidents(normalized.incidents);
+          setMinTime(normalized.minTime);
+          setMaxTime(normalized.maxTime);
+          setSelectedTime(normalized.maxTime);
+          setStatus(`Successfully loaded ${normalized.incidents.length} temporal incidents.`);
+          setError("");
+        })
+        .catch((err) => {
+          if (!mounted) return;
+          if (err.message.includes("502") || err.message.includes("Failed to fetch") || err.message.includes("Server Error")) {
+            // Backend might be offline or starting up, retry silently
+            setStatus("Loading Incidents...");
+            setTimeout(fetchDataset, 3000);
+          } else {
+            setError(`Backend offline or dataset unavailable. ${err.message}`);
+            setStatus("");
+          }
+        });
+    };
+    fetchDataset();
+    return () => { mounted = false; };
   }, []);
 
   const activeIncidents = useMemo(() => {

@@ -10,7 +10,10 @@ async function request(path, options = {}) {
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    let message = await response.text();
+    if (message.includes("<html") || message.includes("<!DOCTYPE")) {
+      message = `Server Error (${response.status})`;
+    }
     throw new Error(message || `Request failed with ${response.status}`);
   }
 
