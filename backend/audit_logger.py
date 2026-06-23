@@ -1,40 +1,3 @@
-"""
-audit_logger.py
-================
-EventFlow AI — Immutable Audit Trail (Supabase / PostgreSQL)
-
-Ships structured audit records to a Supabase `audit_logs` table in a
-fire-and-forget background thread so the FastAPI response latency is
-NEVER affected by the logging call.
-
-Table schema (create this once in the Supabase SQL editor):
---------------------------------------------------------------
-    create table audit_logs (
-        id          bigint generated always as identity primary key,
-        created_at  timestamptz default now() not null,
-        event_type  text        not null,
-        payload     jsonb       not null
-    );
-
-    -- Optional but recommended: index for fast filtering by event type
-    create index on audit_logs (event_type);
-    create index on audit_logs using gin (payload);
---------------------------------------------------------------
-
-Environment variables (set in docker-compose or .env):
-    SUPABASE_URL   — e.g. https://xyzcompany.supabase.co
-    SUPABASE_KEY   — your project's anon or service-role key
-
-Usage:
-    from audit_logger import audit_logger
-
-    audit_logger.log("diversion_query", {
-        "target_lat": 12.97,
-        "target_lon": 77.59,
-        ...
-    })
-"""
-
 from __future__ import annotations
 
 import json
@@ -162,8 +125,4 @@ class AuditLogger:
         t.start()
 
 
-# ─────────────────────────────────────────────
-# Module-level singleton — import and use anywhere:
-#   from audit_logger import audit_logger
-# ─────────────────────────────────────────────
 audit_logger = AuditLogger()

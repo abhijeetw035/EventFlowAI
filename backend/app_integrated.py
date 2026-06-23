@@ -1,30 +1,3 @@
-"""
-app_integrated.py
-===================
-EventFlow AI — Stage 3: one FastAPI backend serving everything.
-
-This is the upgraded diversion-cluster engine + /get-dataset + new
-/calculate-route-diversion endpoint, with the manpower/barricade model
-mounted alongside it via deployment_service.py. One process, one port,
-one set of models loaded once at startup -- so the React frontend only
-ever talks to ONE backend.
-
-Run with:
-    uvicorn app_integrated:app --host 127.0.0.1 --port 8000 --reload
-
-Before running this for the first time:
-    1. python preprocess.py                     (your existing script)
-    2. python prepare_deployment_dataset.py      (produces model_artifacts/)
-    3. python train_deployment_models.py         (fills in the *.joblib files)
-
-Endpoints:
-    GET  /get-dataset               -> raw incident CSV as JSON
-    POST /calculate-cluster-diversion -> localized macro-flank routing
-    POST /calculate-route-diversion   -> point-to-point A->B diversion
-    POST /predict-deployment          -> manpower/barricade recommendation
-    GET  /health                    -> liveness probe
-"""
-
 import osmnx as ox
 import networkx as nx
 import pandas as pd
@@ -39,10 +12,7 @@ import deployment_service
 import analytics_service
 from audit_logger import audit_logger
 
-# ==========================================
 # DATA MODELS
-# ==========================================
-
 class Point(BaseModel):
     lat: float
     lon: float
@@ -71,9 +41,7 @@ class PatrolRouteRequest(BaseModel):
     active_cluster: List[PatrolPoint]
 
 
-# ==========================================
 # 1. THE ADVANCED LOCAL GRAPH ENGINE
-# ==========================================
 class LocalDiversionEngine:
     def __init__(self, lat, lon, dist=12000):
         print(f"🤖 Booting Advanced Cluster Graph Engine (Radius: {dist}m)...")
@@ -85,28 +53,7 @@ class LocalDiversionEngine:
         print(f"✅ Maximum Computational Engine Online: {len(self.G.nodes)} nodes, {len(self.G.edges)} edges.")
 
     def _sever_incident_point(self, lat, lon):
-        """
-        Robustly blocks the road network at a single incident's location.
-
-        A naive "remove only the single nearest edge" approach is NOT enough:
-          - Incidents reported at/near an intersection: that node has several
-            edges meeting at it. Severing only one leaves the others open, so
-            a route can still pass straight through that exact point via a
-            different edge/direction — it visually looks like it's driving
-            right through the incident marker.
-          - OSMnx graphs are MultiDiGraphs: divided/dual-carriageway roads can
-            have more than one parallel edge between the same two nodes
-            (different 'keys'). Removing one without specifying the key can
-            leave a parallel edge intact.
-
-        Fix: snap to the nearest NODE and remove every edge touching it (both
-        directions, every parallel key) — i.e. fully seal that intersection —
-        and also clear every parallel key of the nearest EDGE for mid-block
-        incidents that don't snap cleanly to a node. Returns count severed.
-        """
         severed = 0
-
-        # 1. Seal the nearest node entirely (covers intersection-located incidents)
         try:
             node = ox.nearest_nodes(self.G, lon, lat)
             touching = list(self.G.out_edges(node, keys=True)) + list(self.G.in_edges(node, keys=True))
@@ -116,9 +63,6 @@ class LocalDiversionEngine:
                     severed += 1
         except Exception:
             pass
-
-        # 2. Also clear every parallel key of the nearest edge, both directions
-        #    (covers mid-block incidents that aren't right at a node)
         try:
             u, v, _ = ox.nearest_edges(self.G, lon, lat)
             for a, b in [(u, v), (v, u)]:
@@ -137,12 +81,10 @@ class LocalDiversionEngine:
         # 1. Reset map to clean temporal state
         self.G = self.original_G.copy()
 
-        # 2. MACRO-SEVERANCE: Fully seal every active incident location in the cluster
         print(f"🧨 Severing {len(active_cluster_coords)} active incident locations in local cluster...")
         for pt in active_cluster_coords:
             self._sever_incident_point(pt.lat, pt.lon)
 
-        # 3. Locate the specific target intersection the user clicked
         try:
             u_target, v_target, _ = ox.nearest_edges(self.original_G, target_lon, target_lat)
             approaching_edges = self.original_G.in_edges(u_target, data=True)
@@ -226,10 +168,7 @@ class LocalDiversionEngine:
         except nx.NodeNotFound as e:
             return {"status": "error", "message": f"Node not found in graph: {str(e)}"}
 
-
-# ==========================================
 # 2. FASTAPI SERVER
-# ==========================================
 app = FastAPI(title="EventFlow AI Backend")
 
 app.add_middleware(
