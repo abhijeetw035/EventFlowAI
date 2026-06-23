@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, forwardRef } from "react";
 import DeploymentPanel from "./DeploymentPanel.jsx";
 
 const vectorColors = ["#006e1c", "#0061a4", "#8b5000", "#6750a4", "#006a6a", "#ba1a1a"];
 
-function CollapsibleSection({ title, subtitle, onClear, children, defaultCollapsed = false }) {
+const CollapsibleSection = forwardRef(({ title, subtitle, onClear, children, defaultCollapsed = false }, ref) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   
   return (
-    <section className="animate-fadeIn space-y-4">
+    <section ref={ref} className="animate-fadeIn space-y-4">
       <div className="flex items-start justify-between gap-4 cursor-pointer select-none" onClick={() => setCollapsed(!collapsed)}>
         <div>
           <div className="flex items-center gap-2">
@@ -27,9 +27,45 @@ function CollapsibleSection({ title, subtitle, onClear, children, defaultCollaps
       {!collapsed && children}
     </section>
   );
-}
+});
 
 export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, similarEventsResult, plannedEventResult, routeResult, patrolRouteResult, isGeneratingPatrol, onGeneratePatrolRoute, error, selectedPathIndex, onSelectPath, onClearAll, onClearDeployment, onClearDiversion, onClearSimilarEvents, onClearPlannedEvent, onClearPatrolRoute, onClearPointToPoint }) {
+  const plannedRef = useRef(null);
+  const routeRef = useRef(null);
+  const diversionRef = useRef(null);
+  const similarRef = useRef(null);
+  const deploymentRef = useRef(null);
+
+  useEffect(() => {
+    if (plannedEventResult && plannedRef.current) {
+      plannedRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [plannedEventResult]);
+
+  useEffect(() => {
+    if (routeResult && routeRef.current) {
+      routeRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [routeResult]);
+
+  useEffect(() => {
+    if (diversionResult && diversionRef.current) {
+      diversionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [diversionResult]);
+
+  useEffect(() => {
+    if (similarEventsResult && similarEventsResult.matches && similarRef.current) {
+      similarRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [similarEventsResult]);
+
+  useEffect(() => {
+    if (deploymentResult && deploymentRef.current) {
+      deploymentRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [deploymentResult]);
+
   const diversions = diversionResult?.diversions || [];
 
   return (
@@ -78,18 +114,10 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
           </div>
         )}
 
-        <DeploymentPanel 
-          recommendation={deploymentResult} 
-          patrolRouteResult={patrolRouteResult}
-          isGeneratingPatrol={isGeneratingPatrol}
-          onGeneratePatrolRoute={onGeneratePatrolRoute}
-          onClear={onClearDeployment}
-          onClearPatrolRoute={onClearPatrolRoute}
-        />
-
         {/* ─── PLANNED EVENT RESULTS ─── */}
         {plannedEventResult && (
           <CollapsibleSection
+            ref={plannedRef}
             title="Planned Event Analysis"
             subtitle={<p className="mt-1 text-xs text-on-surface-var">Pre-event risk index and staging recommendations.</p>}
             onClear={onClearPlannedEvent}
@@ -163,56 +191,10 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
           </CollapsibleSection>
         )}
 
-        {/* ─── SIMILAR PAST EVENTS ─── */}
-        {similarEventsResult && similarEventsResult.matches && (
-          <CollapsibleSection
-            title="Similar Past Events"
-            subtitle={<p className="mt-1 text-xs text-on-surface-var">Found <span className="font-display font-bold text-on-surface">{similarEventsResult.matches.length}</span> historical matches.</p>}
-            onClear={onClearSimilarEvents}
-          >
-            <div className="space-y-3">
-              {similarEventsResult.matches.map((match, index) => {
-                const similarityPercent = Math.round(match.similarity_score * 100);
-                // Color scale for similarity
-                const colorClass = similarityPercent > 70 ? "text-primary" : similarityPercent > 40 ? "text-tertiary" : "text-on-surface-var";
-                
-                return (
-                  <article key={match.incident_id + index} className="card-organic overflow-hidden p-0 transition-all duration-200 hover:shadow-ambient-lg">
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div>
-                          <strong className="font-display text-sm font-bold text-on-surface">
-                            {match.date} &middot; <span className="text-xs uppercase tracking-wide">{match.event_type}</span>
-                          </strong>
-                          <p className="mt-0.5 text-xs text-on-surface-var line-clamp-2">
-                            {match.description}
-                          </p>
-                        </div>
-                        <div className={`font-display text-base font-black ${colorClass}`}>
-                          {similarityPercent}%
-                        </div>
-                      </div>
-                      
-                      <div className="mt-3 flex items-center justify-between border-t border-surface-container pt-3">
-                        <span className="text-[0.625rem] font-bold uppercase tracking-wider text-on-surface-var">
-                          Historical Recommendation
-                        </span>
-                        <div className="flex gap-3 text-xs font-semibold">
-                          <span className="text-primary">{match.recommended_personnel} Staff</span>
-                          <span className="text-tertiary">{match.recommended_barricades} Barricades</span>
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </CollapsibleSection>
-        )}
-
         {/* ─── POINT-TO-POINT ROUTE RESULT ─── */}
         {routeResult && (
           <CollapsibleSection
+            ref={routeRef}
             title="Route Diversion Report"
             subtitle={<p className="mt-1 text-xs text-on-surface-var">Checked <span className="font-display font-bold text-on-surface">{routeResult.blockingCount ?? 0}</span> active incident(s) near the corridor.</p>}
             onClear={onClearPointToPoint}
@@ -269,6 +251,7 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
         {/* ─── CLUSTER DIVERSION RESULTS ─── */}
         {diversionResult && (
           <CollapsibleSection
+            ref={diversionRef}
             title="Corridor Report"
             subtitle={<p className="mt-1 text-xs text-on-surface-var"><span className="font-display font-bold text-on-surface">{clusterCount}</span> linked incidents · <span className="font-display font-bold text-on-surface">{diversionResult.total_diversions}</span> bypass routes</p>}
             onClear={onClearDiversion}
@@ -309,6 +292,65 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
             </div>
           </CollapsibleSection>
         )}
+
+        {/* ─── SIMILAR PAST EVENTS ─── */}
+        {similarEventsResult && similarEventsResult.matches && (
+          <CollapsibleSection
+            ref={similarRef}
+            title="Similar Past Events"
+            subtitle={<p className="mt-1 text-xs text-on-surface-var">Found <span className="font-display font-bold text-on-surface">{similarEventsResult.matches.length}</span> historical matches.</p>}
+            onClear={onClearSimilarEvents}
+          >
+            <div className="space-y-3">
+              {similarEventsResult.matches.map((match, index) => {
+                const similarityPercent = Math.round(match.similarity_score * 100);
+                // Color scale for similarity
+                const colorClass = similarityPercent > 70 ? "text-primary" : similarityPercent > 40 ? "text-tertiary" : "text-on-surface-var";
+                
+                return (
+                  <article key={match.incident_id + index} className="card-organic overflow-hidden p-0 transition-all duration-200 hover:shadow-ambient-lg">
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div>
+                          <strong className="font-display text-sm font-bold text-on-surface">
+                            {match.date} &middot; <span className="text-xs uppercase tracking-wide">{match.event_type}</span>
+                          </strong>
+                          <p className="mt-0.5 text-xs text-on-surface-var line-clamp-2">
+                            {match.description}
+                          </p>
+                        </div>
+                        <div className={`font-display text-base font-black ${colorClass}`}>
+                          {similarityPercent}%
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 flex items-center justify-between border-t border-surface-container pt-3">
+                        <span className="text-[0.625rem] font-bold uppercase tracking-wider text-on-surface-var">
+                          Historical Recommendation
+                        </span>
+                        <div className="flex gap-3 text-xs font-semibold">
+                          <span className="text-primary">{match.recommended_personnel} Staff</span>
+                          <span className="text-tertiary">{match.recommended_barricades} Barricades</span>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        <div ref={deploymentRef} className="animate-fadeIn">
+          <DeploymentPanel 
+            recommendation={deploymentResult} 
+            patrolRouteResult={patrolRouteResult}
+            isGeneratingPatrol={isGeneratingPatrol}
+            onGeneratePatrolRoute={onGeneratePatrolRoute}
+            onClear={onClearDeployment}
+            onClearPatrolRoute={onClearPatrolRoute}
+          />
+        </div>
       </div>
     </aside>
   );
