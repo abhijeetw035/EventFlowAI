@@ -565,7 +565,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col bg-surface text-on-surface">
       {/* ─── HEADER ─── */}
-      <header className="glass-organic sticky top-0 z-20 flex items-center justify-between px-8 py-4">
+      <header className="glass-organic sticky top-0 z-[9999] flex items-center justify-between px-8 py-4">
         <div className="flex items-center gap-4">
           {/* Organic logo mark */}
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary shadow-ambient-sm">
