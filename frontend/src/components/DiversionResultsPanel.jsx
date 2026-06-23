@@ -1,6 +1,33 @@
+import { useState } from "react";
 import DeploymentPanel from "./DeploymentPanel.jsx";
 
 const vectorColors = ["#006e1c", "#0061a4", "#8b5000", "#6750a4", "#006a6a", "#ba1a1a"];
+
+function CollapsibleSection({ title, subtitle, onClear, children, defaultCollapsed = false }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  
+  return (
+    <section className="animate-fadeIn space-y-4">
+      <div className="flex items-start justify-between gap-4 cursor-pointer select-none" onClick={() => setCollapsed(!collapsed)}>
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-display text-base font-bold text-on-surface">{title}</h3>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform text-on-surface-var ${collapsed ? '' : 'rotate-180'}`}>
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+          {subtitle}
+        </div>
+        {onClear && (
+          <button onClick={(e) => { e.stopPropagation(); onClear(); }} className="mt-1 rounded p-1 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors" title={`Clear ${title}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        )}
+      </div>
+      {!collapsed && children}
+    </section>
+  );
+}
 
 export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, similarEventsResult, plannedEventResult, routeResult, patrolRouteResult, isGeneratingPatrol, onGeneratePatrolRoute, error, selectedPathIndex, onSelectPath, onClearAll, onClearDeployment, onClearDiversion, onClearSimilarEvents, onClearPlannedEvent, onClearPatrolRoute, onClearPointToPoint }) {
   const diversions = diversionResult?.diversions || [];
@@ -62,21 +89,11 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
 
         {/* ─── PLANNED EVENT RESULTS ─── */}
         {plannedEventResult && (
-          <section className="animate-fadeIn space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-display text-base font-bold text-on-surface">Planned Event Analysis</h3>
-                <p className="mt-1 text-xs text-on-surface-var">
-                  Pre-event risk index and staging recommendations.
-                </p>
-              </div>
-              {onClearPlannedEvent && (
-                <button onClick={onClearPlannedEvent} className="rounded p-1 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors" title="Clear Planned Event">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-              )}
-            </div>
-
+          <CollapsibleSection
+            title="Planned Event Analysis"
+            subtitle={<p className="mt-1 text-xs text-on-surface-var">Pre-event risk index and staging recommendations.</p>}
+            onClear={onClearPlannedEvent}
+          >
             <article className="card-organic overflow-hidden p-0 transition-all duration-200">
               <div className="h-1.5 bg-gradient-to-r from-tertiary to-tertiary-container"></div>
               <div className="p-4">
@@ -143,26 +160,16 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
                 </div>
               </div>
             </article>
-          </section>
+          </CollapsibleSection>
         )}
 
         {/* ─── SIMILAR PAST EVENTS ─── */}
         {similarEventsResult && similarEventsResult.matches && (
-          <section className="animate-fadeIn space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-display text-base font-bold text-on-surface">Similar Past Events</h3>
-                <p className="mt-1 text-xs text-on-surface-var">
-                  Found <span className="font-display font-bold text-on-surface">{similarEventsResult.matches.length}</span> historical matches.
-                </p>
-              </div>
-              {onClearSimilarEvents && (
-                <button onClick={onClearSimilarEvents} className="rounded p-1 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors" title="Clear Similar Events">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-              )}
-            </div>
-            
+          <CollapsibleSection
+            title="Similar Past Events"
+            subtitle={<p className="mt-1 text-xs text-on-surface-var">Found <span className="font-display font-bold text-on-surface">{similarEventsResult.matches.length}</span> historical matches.</p>}
+            onClear={onClearSimilarEvents}
+          >
             <div className="space-y-3">
               {similarEventsResult.matches.map((match, index) => {
                 const similarityPercent = Math.round(match.similarity_score * 100);
@@ -200,27 +207,16 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
                 );
               })}
             </div>
-          </section>
+          </CollapsibleSection>
         )}
 
         {/* ─── POINT-TO-POINT ROUTE RESULT ─── */}
         {routeResult && (
-          <section className="animate-fadeIn space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-display text-base font-bold text-on-surface">Route Diversion Report</h3>
-                <p className="mt-1 text-xs text-on-surface-var">
-                  Checked <span className="font-display font-bold text-on-surface">{routeResult.blockingCount ?? 0}</span> active
-                  incident(s) near the corridor.
-                </p>
-              </div>
-              {onClearPointToPoint && (
-                <button onClick={onClearPointToPoint} className="rounded p-1 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors" title="Clear Point-to-Point Route">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-              )}
-            </div>
-
+          <CollapsibleSection
+            title="Route Diversion Report"
+            subtitle={<p className="mt-1 text-xs text-on-surface-var">Checked <span className="font-display font-bold text-on-surface">{routeResult.blockingCount ?? 0}</span> active incident(s) near the corridor.</p>}
+            onClear={onClearPointToPoint}
+          >
             <div className="grid gap-3">
               {routeResult.status === "success" && (
                 <article className="card-organic overflow-hidden p-0">
@@ -267,27 +263,16 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
                 </article>
               )}
             </div>
-          </section>
+          </CollapsibleSection>
         )}
 
         {/* ─── CLUSTER DIVERSION RESULTS ─── */}
         {diversionResult && (
-          <section className="animate-fadeIn space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-display text-base font-bold text-on-surface">Corridor Report</h3>
-                <p className="mt-1 text-xs text-on-surface-var">
-                  <span className="font-display font-bold text-on-surface">{clusterCount}</span> linked incidents ·{" "}
-                  <span className="font-display font-bold text-on-surface">{diversionResult.total_diversions}</span> bypass routes
-                </p>
-              </div>
-              {onClearDiversion && (
-                <button onClick={onClearDiversion} className="rounded p-1 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors" title="Clear Corridor Report">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-              )}
-            </div>
-
+          <CollapsibleSection
+            title="Corridor Report"
+            subtitle={<p className="mt-1 text-xs text-on-surface-var"><span className="font-display font-bold text-on-surface">{clusterCount}</span> linked incidents · <span className="font-display font-bold text-on-surface">{diversionResult.total_diversions}</span> bypass routes</p>}
+            onClear={onClearDiversion}
+          >
             <div className="space-y-3">
               {diversions.map((diversion, index) => {
                 const isSuccess = diversion.status === "success";
@@ -322,7 +307,7 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
                 );
               })}
             </div>
-          </section>
+          </CollapsibleSection>
         )}
       </div>
     </aside>

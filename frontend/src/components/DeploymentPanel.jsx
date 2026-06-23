@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 const tierConfig = {
   Low: {
     bg: "bg-surface-container",
@@ -18,6 +20,8 @@ const tierConfig = {
 };
 
 export default function DeploymentPanel({ recommendation, patrolRouteResult, isGeneratingPatrol, onGeneratePatrolRoute, onClear, onClearPatrolRoute }) {
+  const [collapsed, setCollapsed] = useState(false);
+
   if (!recommendation) return null;
 
   // Fallback if recommendation is still old format
@@ -35,32 +39,41 @@ export default function DeploymentPanel({ recommendation, patrolRouteResult, isG
       <div className="h-1.5 bg-gradient-to-r from-primary via-secondary to-tertiary"></div>
 
       <div className="p-6">
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 cursor-pointer select-none" onClick={() => setCollapsed(!collapsed)}>
           <div>
-            <h3 className="font-display text-base font-bold text-on-surface">Deployment Recommendation</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-display text-base font-bold text-on-surface">Deployment Recommendation</h3>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform text-on-surface-var ${collapsed ? '' : 'rotate-180'}`}>
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
             <p className="mt-1 text-xs text-on-surface-var">
               Impact Radius <span className="font-display font-bold text-on-surface">{Number(single.affected_radius_km || 0).toFixed(2)} km</span> · Cluster{" "}
               <span className="font-display font-bold text-on-surface">{single.location_cluster}</span>
             </p>
           </div>
-          {onClear && (
-            <button
-              onClick={onClear}
-              className="mt-1 rounded text-on-surface-var hover:bg-surface-container hover:text-on-surface p-1 transition-colors"
-              title="Clear Deployment Recommendation"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          )}
-          <span className={`rounded-full px-3.5 py-1.5 text-[0.6875rem] font-bold ${tierSingle.bg} ${tierSingle.text}`}>
-            {single.deployment_tier}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-3.5 py-1.5 text-[0.6875rem] font-bold ${tierSingle.bg} ${tierSingle.text}`}>
+              {single.deployment_tier}
+            </span>
+            {onClear && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onClear(); }}
+                className="mt-1 rounded text-on-surface-var hover:bg-surface-container hover:text-on-surface p-1 transition-colors"
+                title="Clear Deployment Recommendation"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* ─── SINGLE POINT RECOMMENDATION ─── */}
+        {!collapsed && (
+          <div className="mt-6">
+            {/* ─── SINGLE POINT RECOMMENDATION ─── */}
         <div className="mb-4">
           <h4 className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-on-surface-var mb-3">Single Point Recommendation</h4>
           <div className="grid grid-cols-2 gap-4">
@@ -183,7 +196,8 @@ export default function DeploymentPanel({ recommendation, patrolRouteResult, isG
             </ul>
           </section>
         )}
-
+          </div>
+        )}
       </div>
     </article>
   );
