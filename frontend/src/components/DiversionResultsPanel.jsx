@@ -30,6 +30,9 @@ const CollapsibleSection = forwardRef(({ title, subtitle, onClear, children, def
 });
 
 export default function DiversionResultsPanel({ status, selectedName, clusterCount, diversionResult, deploymentResult, similarEventsResult, plannedEventResult, routeResult, patrolRouteResult, isGeneratingPatrol, onGeneratePatrolRoute, error, selectedPathIndex, onSelectPath, onClearAll, onClearDeployment, onClearDiversion, onClearSimilarEvents, onClearPlannedEvent, onClearPatrolRoute, onClearPointToPoint }) {
+  const isLoading = status && !status.toLowerCase().startsWith("successfully");
+  const isSuccess = status && status.toLowerCase().startsWith("successfully");
+  const hasAnyData = !!(diversionResult || deploymentResult || similarEventsResult || plannedEventResult || routeResult || patrolRouteResult || selectedName);
   const plannedRef = useRef(null);
   const routeRef = useRef(null);
   const diversionRef = useRef(null);
@@ -78,25 +81,38 @@ export default function DiversionResultsPanel({ status, selectedName, clusterCou
             {selectedName || "Select an incident to begin."}
           </p>
         </div>
-        <button
-          onClick={onClearAll}
-          className="rounded-lg p-2 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors"
-          title="Clear All Measurements"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        {hasAnyData && (
+          <button
+            onClick={onClearAll}
+            className="rounded-lg p-2 text-on-surface-var hover:bg-surface-container hover:text-on-surface transition-colors"
+            title="Clear All Measurements"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto custom-scrollbar px-6 pb-6">
-        {/* Status */}
-        {status && (
+        {/* Status — loading spinner */}
+        {isLoading && (
           <div className="animate-fadeIn card-nested flex items-center gap-3 p-4">
             <svg className="h-4 w-4 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <circle cx="12" cy="12" r="10" opacity="0.2"/>
               <path d="M12 2a10 10 0 0 1 10 10"/>
+            </svg>
+            <span className="text-xs leading-relaxed text-on-surface-var">{status}</span>
+          </div>
+        )}
+
+        {/* Status — success message (no spinner) */}
+        {isSuccess && (
+          <div className="animate-fadeIn card-nested flex items-center gap-3 p-4">
+            <svg className="h-4 w-4 shrink-0 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="9 12 11 14 15 10"/>
             </svg>
             <span className="text-xs leading-relaxed text-on-surface-var">{status}</span>
           </div>

@@ -11,3 +11,5 @@ eventflow-frontend/
 /venv/
 /cache/
 /prompts/
+docs
+learn

@@ -49,29 +49,42 @@ function explicitEventEndTime(incident) {
 
 function normalizeDataset(data) {
   let minTime = Infinity;
-  let maxTime = -Infinity;
+  let maxStart = -Infinity; // tracks only start times, used for end_datetime sanity check
 
-  const incidents = data
+  // First pass: collect all valid start times
+  const rawIncidents = data
     .map((incident) => {
       if (!incident.start_datetime) return null;
       const parsedStart = new Date(incident.start_datetime).getTime();
       if (Number.isNaN(parsedStart)) return null;
-      const explicitEnd = explicitEventEndTime(incident);
       minTime = Math.min(minTime, parsedStart);
-      maxTime = Math.max(maxTime, parsedStart, Number.isFinite(explicitEnd) ? explicitEnd : -Infinity);
-      return { ...incident, parsedStart, explicitEnd };
+      maxStart = Math.max(maxStart, parsedStart);
+      return { ...incident, parsedStart };
     })
     .filter(Boolean);
 
-  const stableHorizon = Number.isFinite(maxTime) ? Math.min(maxTime, Date.now()) : Date.now();
+  // Any end_datetime more than 1 year beyond the latest known start is a data
+  // entry error (e.g. the 3 rows in the DB with 2026/2027 end dates). Treat them as null.
+  const endCutoff = maxStart + 365 * 24 * 60 * 60 * 1000;
+
+  let maxTime = maxStart; // will be extended by valid end times only
+  const incidents = rawIncidents.map((incident) => {
+    const raw = explicitEventEndTime(incident);
+    const explicitEnd = Number.isFinite(raw) && raw <= endCutoff ? raw : NaN;
+    maxTime = Math.max(maxTime, Number.isFinite(explicitEnd) ? explicitEnd : -Infinity);
+    return { ...incident, explicitEnd };
+  });
+
+  // Use the actual database horizon — do NOT cap to today's date.
+  const dbHorizon = Number.isFinite(maxTime) ? maxTime : Date.now();
   return {
     incidents: incidents.map((incident, index) => ({
       ...incident,
-      parsedEnd: Number.isFinite(incident.explicitEnd) ? Math.min(incident.explicitEnd, Date.now()) : stableHorizon,
+      parsedEnd: Number.isFinite(incident.explicitEnd) ? incident.explicitEnd : dbHorizon,
       stableKey: `${String(incident.id || incident.event_id || "incident")}-${index}`,
-    })).filter(incident => incident.parsedStart <= Date.now()),
+    })),
     minTime,
-    maxTime: stableHorizon,
+    maxTime: dbHorizon,
   };
 }
 
@@ -237,7 +250,9 @@ export default function App() {
           setAllIncidents(normalized.incidents);
           setMinTime(normalized.minTime);
           setMaxTime(normalized.maxTime);
-          setSelectedTime(normalized.maxTime);
+          // Default to "now" (or the db max if db is entirely in the past).
+          // The full slider range still covers the entire db span.
+          setSelectedTime(Math.min(normalized.maxTime, Date.now()));
           setStatus(`Successfully loaded ${normalized.incidents.length} temporal incidents.`);
           setError("");
         })
